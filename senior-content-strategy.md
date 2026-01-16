@@ -1,191 +1,327 @@
-# 시니어 타깃 감정형 콘텐츠 전략 가이드
+# 키워드 → 영상 자동 생성 파이프라인 (API 기반)
 
-## 0. 목표 정의 (핵심 - 안 하면 100% 흔들립니다)
-
-### 타깃 정의
-- **타깃**: 시니어 + 감정소모형(억울/분노/불안/감동) 사연에 반응하는 층
-- **형식**: 롱폼 12~20분(초반 안정화에 유리) + 쇼츠 2~3개로 유입
-- **주당 생산**: 초반 2편 → 안정화 후 3편 (욕심내면 품질 무너집니다)
-
-### 성공 KPI (초기 10개 영상 기준)
-
-| 지표 | 목표 |
-|------|------|
-| CTR(썸네일/제목) | 4~7% |
-| 평균 시청지속 | 35~45% (12~20분이면 최소 4~8분대) |
-| 댓글/저장/공유 반응 | "공감/분노/정의감" 키워드가 나오면 방향 맞음 |
+> OpenAI 이미지 생성 + Google TTS로 영상 자동화
 
 ---
 
-## 1. 레퍼런스 수집 시스템 (PocketTube로 "연구실" 만들기)
+## 필요 API
 
-> PocketTube는 구독 채널을 폴더/그룹으로 관리하고, 그룹별 피드로 모니터링하는 확장입니다.
-> 핵심은 "구독"이 아니라 카테고리별 실험군을 만들어 매일 체크하는 것입니다.
-
-### PocketTube 그룹 구조 (추천)
-
-| 그룹 | 내용 |
-|------|------|
-| A | 북한/탈북/안보/실화 사연 |
-| B | 옛날이야기/야담/민담 (시니어 취향) |
-| C | 국뽕 해외반응 (감정 고조형) |
-| D | "썸네일/제목이 미친 채널"만 모은 폴더 (카피 금지, 구조만 분석) |
-
-### 매일 15분 루틴
-
-1. 각 그룹에서 최근 7일 업로드만 보기
-2. "조회수/댓글밀도/업로드 빈도"가 비정상적으로 좋은 영상 3개 저장
-3. 저장한 3개 중 오프닝 30초만 보고 "훅 장치"를 메모
+| API | 용도 | 가격 |
+|-----|------|------|
+| OpenAI DALL-E 3 | 이미지 생성 | $0.04~0.12/장 |
+| Google Cloud TTS | 음성 생성 | 무료 400만 글자/월, 이후 $4/100만 글자 |
+| (선택) OpenAI GPT | 대본 생성 | $0.01~0.03/1K 토큰 |
 
 ---
 
-## 2. 대본 추출 → 구조적 각색
+## 파이프라인 구조
 
-### 대본 원재료 확보
-- YouTube Summary with ChatGPT & Claude 같은 확장으로 요약/스크립트 접근
-- 또는 "자막 복사"만 필요하면 transcript copier류도 옵션
-
-### "복사형 양산"을 피하는 휴먼터치 규칙 5개
-
-| # | 규칙 | 설명 |
-|---|------|------|
-| 1 | 사건 순서 뒤집기 | 결말 일부 → 원인 추적 (시청지속 증가) |
-| 2 | 인물의 내적동기 추가 | "왜 그렇게까지 했는가"를 2~3문장으로 설득 |
-| 3 | 증거/단서 장면 2개 삽입 | 시청자가 추리하게 만들기 |
-| 4 | 감정 리듬 설계 | (불안 → 분노 → 안도/정의) 파동을 의도적으로 넣기 |
-| 5 | 문장톤 재작성 | 표현/비유/대사를 완전히 새로 **(이게 제일 중요)** |
-
-### 각색 프롬프트 (복붙용)
-
-**입력**: 원문 요약/스크립트 + 내가 원하는 메시지 (예: "억울함이 정의로 뒤집히는 이야기")
-
-**출력**: 아래 구조로 강제
-
-### 대본 구조 (12~20분용)
-
-| 타임스탬프 | 내용 |
-|------------|------|
-| 0:00–0:25 | 결말의 '이상한 한 줄'로 훅 (의문형) |
-| 0:25–2:30 | 상황/인물/갈등 (감정 몰입) |
-| 2:30–7:00 | 단서1, 단서2 투입 (추리 유도) |
-| 7:00–12:00 | 반전 (가해/피해 프레임 뒤집기) |
-| 12:00–마무리 | 정리 + 시청자 질문 1개 (댓글 유도) |
+```
+키워드 입력
+    ↓
+1. GPT로 대본 생성 (장면별 분할)
+    ↓
+2. 각 장면별 DALL-E로 이미지 생성
+    ↓
+3. Google TTS로 나레이션 생성
+    ↓
+4. FFmpeg로 이미지+음성 결합 → 영상 출력
+```
 
 ---
 
-## 3. 영상 제작 파이프라인
+## 1. 환경 설정
 
-### Vrew (브루): 텍스트→비디오 뼈대
+```bash
+pip install openai google-cloud-texttospeech moviepy pillow
+```
 
-> **[새로 만들기] → [텍스트로 비디오 만들기]**로 스크립트 기반 영상 틀을 잡는 플로우
-
-#### Vrew에서 고정할 것 (템플릿화)
-
-- 자막 스타일 (폰트/크기/하단 위치)
-- 장면 길이 기본값 (예: 4~6초)
-- BGM 볼륨/효과음 최소 세트
-
-### 이미지 생성 도구
-
-| 도구 | 용도 |
-|------|------|
-| ImageFX | Google Labs의 이미지 생성 도구 (로그인 기반) |
-| Whisk | 이미지를 프롬프트로 써서 아이디어를 시각화하는 Google Labs 실험 도구 |
-
-### 추천 운영 방식 (대량생산용)
-
-- "캐릭터/배경"을 3~5개 기본 세트로 고정 (일관성)
-- 매 영상당 40~60장 필요시:
-  - **기본 세트 재활용 70%** + **핵심 장면만 신규 30%**로 운영
-
-### 정지 이미지에 움직임: Hailuo
-
-> 이미지 업로드 + 텍스트 프롬프트로 짧은 영상 생성
-
-⚠️ **주의사항**: 저작권 캐릭터/유명 IP는 리스크가 큼 (분쟁 이슈 뉴스 사례 있음)
-→ 실존 캐릭터/유명 캐릭터/브랜드 요소는 피하는 게 정답
+```bash
+# API 키 환경변수
+export OPENAI_API_KEY="sk-..."
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/credentials.json"
+```
 
 ---
 
-## 4. 썸네일 규칙 (감각 말고 "규칙"으로)
+## 2. 대본 생성 (GPT)
 
-> 썸네일은 매번 예술로 만들면 생산성이 죽습니다
+```python
+from openai import OpenAI
 
-### 썸네일 3요소 고정
+client = OpenAI()
 
-| # | 요소 | 예시 |
-|---|------|------|
-| 1 | 얼굴/핵심 오브젝트 1개 | 크게 배치 |
-| 2 | 감정 단어 2~4글자 1개 | "억울", "반전", "처벌", "충격" |
-| 3 | 대비 강한 상황 | "문 앞", "법정", "돈 봉투", "도장" |
+def generate_script(keyword: str, duration_minutes: int = 12) -> list[dict]:
+    """키워드로 장면별 대본 생성"""
 
-### A/B 테스트 룰 (강제)
+    prompt = f"""
+    주제: {keyword}
+    형식: 시니어 타깃 감정형 유튜브 영상 ({duration_minutes}분)
 
-1. 같은 영상에 썸네일 2개 제작
-2. 업로드 후 24~48시간 안에 CTR 낮은 것 교체
+    아래 형식으로 장면별 대본을 JSON 배열로 출력하세요:
+    [
+      {{"scene": 1, "narration": "나레이션 텍스트", "image_prompt": "DALL-E용 이미지 프롬프트 (영어)"}},
+      ...
+    ]
 
----
+    구조:
+    - scene 1-2: 훅 (결말의 이상한 한 줄로 시작)
+    - scene 3-10: 상황/인물/갈등 전개
+    - scene 11-20: 단서 투입, 반전
+    - scene 21-25: 정리 + 시청자 질문
 
-## 5. 수익 극대화: 롱폼↔쇼츠 연결 시스템화
+    총 25개 장면, 각 나레이션은 20-30초 분량(50-80자)
+    """
 
-> 롱폼 인트로 20~35초를 쇼츠로 재가공 → 본편 링크 유입
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"}
+    )
 
-### 쇼츠 템플릿 (15~25초)
-
-| 타임스탬프 | 내용 |
-|------------|------|
-| 0~3초 | 의문 한 줄 |
-| 3~12초 | 단서 1개 |
-| 12~20초 | "결말은 본편" + 고정 멘트 |
-
----
-
-## 6. 4주 실행 로드맵
-
-### 1주차: 채널/템플릿/레퍼런스 세팅
-
-- [ ] 브랜드 채널 개설 (이름/아이콘/배너)
-- [ ] PocketTube 그룹 4개 만들고 레퍼런스 30개 저장
-- [ ] Vrew 템플릿 1개 완성 (자막/장면길이/BGM)
-
-**산출물**: "대본 구조 템플릿 1개" + "썸네일 규칙 1개"
-
-### 2주차: 제작 2편 (품질 우선)
-
-- [ ] 대본 2개 (각 12~20분)
-- [ ] 이미지 30%만 신규 생성, 나머지는 세트 재활용
-- [ ] 쇼츠 2~3개로 연결
-
-**산출물**: 롱폼 2 + 쇼츠 4~6
-
-### 3주차: 반복 생산 (주 3편 목표)
-
-- [ ] 반응 좋은 카테고리에 집중
-- [ ] 썸네일 A/B 테스트 루틴화
-
-### 4주차: "잘되는 포맷" 고정 + 일본 확장 준비
-
-- [ ] 한국에서 반응 좋은 포맷 1개를 일본어로 실험 (1~2편만)
-
-> 일본은 시청층이 두껍다는 이야기가 많지만, 무조건 확장부터 하면 분산됩니다.
-> → 4주차 이후가 맞습니다.
+    import json
+    return json.loads(response.choices[0].message.content)["scenes"]
+```
 
 ---
 
-## 핵심 경고
+## 3. 이미지 생성 (DALL-E 3)
 
-> **지금 플로우에서 실패하는 1순위는 도구 욕심입니다.**
+```python
+import requests
+from pathlib import Path
 
-도구 10개 익히려 하지 말고, 아래 3개만 먼저 고정하세요:
+def generate_image(prompt: str, output_path: str) -> str:
+    """DALL-E 3로 이미지 생성"""
 
-1. **PocketTube** (레퍼런스)
-2. **각색 템플릿** (대본)
-3. **Vrew** (조립)
+    response = client.images.generate(
+        model="dall-e-3",
+        prompt=prompt,
+        size="1792x1024",  # 16:9 비율
+        quality="standard",
+        n=1
+    )
 
-나머지는 "필요해질 때" 붙이면 됩니다.
+    image_url = response.data[0].url
+
+    # 이미지 다운로드
+    img_data = requests.get(image_url).content
+    Path(output_path).write_bytes(img_data)
+
+    return output_path
+
+
+def generate_all_images(scenes: list[dict], output_dir: str) -> list[str]:
+    """모든 장면 이미지 생성"""
+
+    Path(output_dir).mkdir(exist_ok=True)
+    image_paths = []
+
+    for scene in scenes:
+        path = f"{output_dir}/scene_{scene['scene']:02d}.png"
+        generate_image(scene["image_prompt"], path)
+        image_paths.append(path)
+        print(f"Generated: {path}")
+
+    return image_paths
+```
 
 ---
 
-## 한줄 요약
+## 4. 음성 생성 (Google TTS)
 
-> 레퍼런스 수집을 시스템화하고(포켓튜브), 대본을 구조적으로 재설계한 뒤, Vrew로 조립하는 **3단 고정 파이프라인**으로 4주만 밀면 채널이 가동됩니다.
+```python
+from google.cloud import texttospeech
+
+def generate_audio(text: str, output_path: str) -> str:
+    """Google TTS로 음성 생성"""
+
+    client = texttospeech.TextToSpeechClient()
+
+    synthesis_input = texttospeech.SynthesisInput(text=text)
+
+    voice = texttospeech.VoiceSelectionParams(
+        language_code="ko-KR",
+        name="ko-KR-Wavenet-A",  # 또는 ko-KR-Wavenet-B, C, D
+        ssml_gender=texttospeech.SsmlVoiceGender.FEMALE
+    )
+
+    audio_config = texttospeech.AudioConfig(
+        audio_encoding=texttospeech.AudioEncoding.MP3,
+        speaking_rate=0.9,  # 시니어용 약간 느리게
+        pitch=0.0
+    )
+
+    response = client.synthesize_speech(
+        input=synthesis_input,
+        voice=voice,
+        audio_config=audio_config
+    )
+
+    Path(output_path).write_bytes(response.audio_content)
+    return output_path
+
+
+def generate_all_audio(scenes: list[dict], output_dir: str) -> list[str]:
+    """모든 장면 음성 생성"""
+
+    Path(output_dir).mkdir(exist_ok=True)
+    audio_paths = []
+
+    for scene in scenes:
+        path = f"{output_dir}/scene_{scene['scene']:02d}.mp3"
+        generate_audio(scene["narration"], path)
+        audio_paths.append(path)
+        print(f"Generated: {path}")
+
+    return audio_paths
+```
+
+---
+
+## 5. 영상 합성 (MoviePy)
+
+```python
+from moviepy.editor import (
+    ImageClip, AudioFileClip, concatenate_videoclips,
+    CompositeVideoClip, TextClip
+)
+
+def create_video(image_paths: list[str], audio_paths: list[str],
+                 scenes: list[dict], output_path: str) -> str:
+    """이미지+음성 결합하여 영상 생성"""
+
+    clips = []
+
+    for img_path, audio_path, scene in zip(image_paths, audio_paths, scenes):
+        # 음성 길이에 맞춰 이미지 클립 생성
+        audio = AudioFileClip(audio_path)
+
+        img_clip = (ImageClip(img_path)
+                    .set_duration(audio.duration)
+                    .set_audio(audio)
+                    .resize(height=1080))
+
+        # 자막 추가 (선택)
+        txt_clip = (TextClip(scene["narration"],
+                            fontsize=40,
+                            color='white',
+                            font='NanumGothic',
+                            stroke_color='black',
+                            stroke_width=2)
+                    .set_position(('center', 'bottom'))
+                    .set_duration(audio.duration))
+
+        video = CompositeVideoClip([img_clip, txt_clip])
+        clips.append(video)
+
+    # 전체 영상 결합
+    final = concatenate_videoclips(clips, method="compose")
+    final.write_videofile(output_path, fps=24, codec='libx264')
+
+    return output_path
+```
+
+---
+
+## 6. 전체 파이프라인
+
+```python
+def keyword_to_video(keyword: str, output_dir: str = "./output") -> str:
+    """키워드 입력 → 영상 출력"""
+
+    print(f"=== 키워드: {keyword} ===")
+
+    # 1. 대본 생성
+    print("\n[1/4] 대본 생성 중...")
+    scenes = generate_script(keyword)
+    print(f"  → {len(scenes)}개 장면 생성 완료")
+
+    # 2. 이미지 생성
+    print("\n[2/4] 이미지 생성 중...")
+    image_paths = generate_all_images(scenes, f"{output_dir}/images")
+
+    # 3. 음성 생성
+    print("\n[3/4] 음성 생성 중...")
+    audio_paths = generate_all_audio(scenes, f"{output_dir}/audio")
+
+    # 4. 영상 합성
+    print("\n[4/4] 영상 합성 중...")
+    video_path = create_video(
+        image_paths,
+        audio_paths,
+        scenes,
+        f"{output_dir}/final_video.mp4"
+    )
+
+    print(f"\n=== 완료: {video_path} ===")
+    return video_path
+
+
+# 실행
+if __name__ == "__main__":
+    keyword_to_video("북한에서 탈출한 가족의 20년 만의 재회")
+```
+
+---
+
+## 7. 비용 계산 (12분 영상 기준)
+
+| 항목 | 수량 | 단가 | 비용 |
+|------|------|------|------|
+| GPT-4o (대본) | ~2K 토큰 | $0.01/1K | ~$0.02 |
+| DALL-E 3 이미지 | 25장 | $0.04/장 | ~$1.00 |
+| Google TTS | ~2000자 | 무료 | $0.00 |
+| **총합** | | | **~$1.02/영상** |
+
+---
+
+## 8. Google TTS 설정 방법
+
+```bash
+# 1. Google Cloud 프로젝트 생성
+# 2. Cloud Text-to-Speech API 활성화
+# 3. 서비스 계정 생성 → JSON 키 다운로드
+
+# 4. 환경변수 설정
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your-key.json"
+```
+
+**사용 가능한 한국어 음성**:
+| 음성 ID | 성별 | 특징 |
+|---------|------|------|
+| ko-KR-Wavenet-A | 여성 | 자연스러움 |
+| ko-KR-Wavenet-B | 여성 | 차분함 |
+| ko-KR-Wavenet-C | 남성 | 또렷함 |
+| ko-KR-Wavenet-D | 남성 | 중후함 |
+| ko-KR-Neural2-A | 여성 | 최신, 더 자연스러움 |
+| ko-KR-Neural2-B | 여성 | 최신 |
+| ko-KR-Neural2-C | 남성 | 최신 |
+
+---
+
+## 9. 디렉토리 구조
+
+```
+output/
+├── images/
+│   ├── scene_01.png
+│   ├── scene_02.png
+│   └── ...
+├── audio/
+│   ├── scene_01.mp3
+│   ├── scene_02.mp3
+│   └── ...
+└── final_video.mp4
+```
+
+---
+
+## 핵심 요약
+
+```
+키워드 → GPT(대본) → DALL-E(이미지) → Google TTS(음성) → FFmpeg(합성) → 영상
+```
+
+**예상 비용**: ~$1/영상
+**예상 시간**: 5~10분 (API 호출 시간)
