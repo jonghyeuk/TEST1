@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+import tempfile
 import requests
 from pathlib import Path
 from fastapi import FastAPI, BackgroundTasks
@@ -8,6 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from openai import OpenAI
 from google.cloud import texttospeech
+from google.oauth2 import service_account
 from moviepy.editor import (
     ImageClip, AudioFileClip, concatenate_videoclips,
     CompositeVideoClip, TextClip
@@ -17,6 +19,17 @@ app = FastAPI(title="키워드 → 영상 생성 API")
 
 # OpenAI 클라이언트
 openai_client = OpenAI()
+
+# Google TTS 클라이언트 (환경변수에서 JSON 직접 읽기)
+def get_tts_client():
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+    if creds_json:
+        creds_dict = json.loads(creds_json)
+        credentials = service_account.Credentials.from_service_account_info(creds_dict)
+        return texttospeech.TextToSpeechClient(credentials=credentials)
+    return texttospeech.TextToSpeechClient()
+
+tts_client = None
 
 # 작업 상태 저장
 jobs = {}
@@ -82,7 +95,9 @@ def generate_image(prompt: str, output_path: str) -> str:
 
 # ===== 음성 생성 =====
 def generate_audio(text: str, output_path: str) -> str:
-    client = texttospeech.TextToSpeechClient()
+    global tts_client
+    if tts_client is None:
+        tts_client = get_tts_client()
 
     synthesis_input = texttospeech.SynthesisInput(text=text)
     voice = texttospeech.VoiceSelectionParams(
@@ -95,7 +110,7 @@ def generate_audio(text: str, output_path: str) -> str:
         speaking_rate=0.9
     )
 
-    response = client.synthesize_speech(
+    response = tts_client.synthesize_speech(
         input=synthesis_input,
         voice=voice,
         audio_config=audio_config
