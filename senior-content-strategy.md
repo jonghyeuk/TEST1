@@ -1,244 +1,327 @@
-# 키워드 → 영상 자동 생성 서비스 가이드
+# 키워드 → 영상 자동 생성 파이프라인 (API 기반)
 
-> 키워드/텍스트만 입력하면 영상이 한 번에 완성되는 서비스 목록
-
----
-
-## 1. 원클릭 영상 생성 서비스 (핵심 3개)
-
-### InVideo AI ⭐ 최추천
-- **URL**: https://invideo.io
-- **작동 방식**: 키워드/주제 입력 → AI가 대본+영상+자막+BGM 전부 자동 생성
-- **한국어**: 지원 (다국어 번역 가능)
-- **영상 길이**: 쇼츠~롱폼 모두 가능
-
-| 플랜 | 가격 | 내용 |
-|------|------|------|
-| Free | $0 | 주 10분, 워터마크 |
-| Plus | $25/월 | 월 50분, iStock 영상, 무제한 내보내기 |
-| Max | $60/월 | 월 200분, 프리미엄 스톡 |
-
-**사용법**:
-```
-1. invideo.io 접속 → "AI Video Generator" 클릭
-2. 프롬프트 입력: "시니어를 위한 북한 탈북 실화 이야기, 12분 분량, 감동적인 톤"
-3. 생성 버튼 클릭 → 2~5분 후 영상 완성
-4. 필요시 수정 후 내보내기
-```
+> OpenAI 이미지 생성 + Google TTS로 영상 자동화
 
 ---
 
-### Pictory
-- **URL**: https://pictory.ai
-- **작동 방식**: 스크립트/블로그URL/기사 붙여넣기 → 영상 자동 생성
-- **한국어**: 지원
-- **특징**: URL만 넣어도 영상화 가능
+## 필요 API
 
-| 플랜 | 가격 | 내용 |
-|------|------|------|
-| Starter | $19/월 | 월 30편, 10분 영상 |
-| Professional | $39/월 | 월 60편, 20분 영상, 브랜딩 |
-| Teams | $99/월 | 월 90편, 팀 협업 |
+| API | 용도 | 가격 |
+|-----|------|------|
+| OpenAI DALL-E 3 | 이미지 생성 | $0.04~0.12/장 |
+| Google Cloud TTS | 음성 생성 | 무료 400만 글자/월, 이후 $4/100만 글자 |
+| (선택) OpenAI GPT | 대본 생성 | $0.01~0.03/1K 토큰 |
 
-**사용법**:
+---
+
+## 파이프라인 구조
+
 ```
-1. pictory.ai → "Script to Video" 선택
-2. 대본 또는 블로그 URL 입력
-3. AI가 장면별로 자동 분할 + 스톡영상 매칭
-4. 음성 선택 → 내보내기
+키워드 입력
+    ↓
+1. GPT로 대본 생성 (장면별 분할)
+    ↓
+2. 각 장면별 DALL-E로 이미지 생성
+    ↓
+3. Google TTS로 나레이션 생성
+    ↓
+4. FFmpeg로 이미지+음성 결합 → 영상 출력
 ```
 
 ---
 
-### Fliki
-- **URL**: https://fliki.ai
-- **작동 방식**: 텍스트 입력 → 영상 + AI 음성 자동 생성
-- **한국어**: 지원 (850+ 음성, 77개 언어)
-- **특징**: 음성 품질 최고, 한국어 TTS 자연스러움
+## 1. 환경 설정
 
-| 플랜 | 가격 | 내용 |
-|------|------|------|
-| Free | $0 | 월 5분 |
-| Standard | $21/월 | 월 180분, HD |
-| Premium | $66/월 | 월 600분, 음성 복제 |
-
-**사용법**:
+```bash
+pip install openai google-cloud-texttospeech moviepy pillow
 ```
-1. fliki.ai → "New File" → "Article to video" 또는 "Idea to video"
-2. 키워드/주제 입력: "탈북민의 눈물겨운 가족 상봉 이야기"
-3. AI가 대본 생성 → 장면별 영상 매칭 → 음성 합성
-4. 다운로드
+
+```bash
+# API 키 환경변수
+export OPENAI_API_KEY="sk-..."
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/credentials.json"
 ```
 
 ---
 
-## 2. 한국어 특화 서비스
+## 2. 대본 생성 (GPT)
 
-### Vrew (브루) - 국산
-- **URL**: https://vrew.ai
-- **작동 방식**: 한 문장 입력 → 대본+이미지+음성 자동 생성
-- **한국어**: 완벽 지원 (국산)
-- **가격**: 무료 플랜 있음, 유료 $9.99/월~
+```python
+from openai import OpenAI
 
-**사용법**:
-```
-1. vrew.ai → "새로 만들기" → "텍스트로 비디오 만들기"
-2. 주제 입력: "억울하게 누명 쓴 시민이 진실을 밝히는 이야기"
-3. AI가 대본 작성 → 이미지 생성 → 음성 합성
-4. 편집 후 내보내기
-```
+client = OpenAI()
 
----
+def generate_script(keyword: str, duration_minutes: int = 12) -> list[dict]:
+    """키워드로 장면별 대본 생성"""
 
-### 미리캔버스
-- **URL**: https://miricanvas.com
-- **작동 방식**: 텍스트/이미지 → 영상 자동 생성 (KLING AI 탑재)
-- **한국어**: 완벽 지원 (국산)
-- **가격**: 기본 무료, 매일 크레딧 지급
+    prompt = f"""
+    주제: {keyword}
+    형식: 시니어 타깃 감정형 유튜브 영상 ({duration_minutes}분)
 
-**사용법**:
-```
-1. miricanvas.com → "AI 영상 만들기"
-2. 텍스트 설명 입력
-3. AI가 분석 후 영상 생성
-4. 다운로드
-```
+    아래 형식으로 장면별 대본을 JSON 배열로 출력하세요:
+    [
+      {{"scene": 1, "narration": "나레이션 텍스트", "image_prompt": "DALL-E용 이미지 프롬프트 (영어)"}},
+      ...
+    ]
 
----
+    구조:
+    - scene 1-2: 훅 (결말의 이상한 한 줄로 시작)
+    - scene 3-10: 상황/인물/갈등 전개
+    - scene 11-20: 단서 투입, 반전
+    - scene 21-25: 정리 + 시청자 질문
 
-## 3. 아바타 기반 (얼굴 나오는 영상)
+    총 25개 장면, 각 나레이션은 20-30초 분량(50-80자)
+    """
 
-### AI Studios (딥브레인 AI)
-- **URL**: https://aistudios.com
-- **작동 방식**: 대본 입력 → AI 아바타가 말하는 영상 생성
-- **한국어**: 완벽 지원 (한국 회사)
-- **특징**: 2000+ 아바타, 150개 언어
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"}
+    )
 
-| 플랜 | 가격 |
-|------|------|
-| Starter | $24/월 |
-| Pro | $96/월 |
-
----
-
-### HeyGen
-- **URL**: https://heygen.com
-- **작동 방식**: 대본 → AI 아바타 영상
-- **한국어**: 지원
-- **가격**: $24/월~
-
----
-
-### Synthesia
-- **URL**: https://synthesia.io
-- **작동 방식**: 텍스트 → AI 아바타 영상 (기업용)
-- **한국어**: 지원
-- **가격**: $22/월~
-
----
-
-## 4. 쇼츠 자동 분할
-
-### Opus Clip
-- **URL**: https://opus.pro
-- **작동 방식**: 롱폼 영상 URL 입력 → AI가 쇼츠 자동 추출
-- **특징**: 바이럴 포인트 자동 감지
-
-| 플랜 | 가격 |
-|------|------|
-| Free | 월 60분 |
-| Starter | $19/월 |
-
-**사용법**:
-```
-1. opus.pro → YouTube 영상 URL 붙여넣기
-2. AI가 분석 후 쇼츠 10~20개 자동 생성
-3. 선택해서 다운로드
+    import json
+    return json.loads(response.choices[0].message.content)["scenes"]
 ```
 
 ---
 
-## 5. 추천 조합 (시니어 감정형 콘텐츠용)
+## 3. 이미지 생성 (DALL-E 3)
 
-### 최소 비용 조합 (무료~$25/월)
-```
-키워드 입력 → InVideo AI (영상 생성)
-         → Opus Clip (쇼츠 분할)
-```
+```python
+import requests
+from pathlib import Path
 
-### 품질 중시 조합 ($50~100/월)
-```
-키워드 → InVideo AI 또는 Pictory (롱폼)
-      → Fliki (음성 품질 업그레이드)
-      → Opus Clip (쇼츠)
-```
+def generate_image(prompt: str, output_path: str) -> str:
+    """DALL-E 3로 이미지 생성"""
 
-### 한국어 최적화 조합
-```
-키워드 → Vrew (대본+영상)
-      → 미리캔버스 (썸네일)
-      → Opus Clip (쇼츠)
-```
+    response = client.images.generate(
+        model="dall-e-3",
+        prompt=prompt,
+        size="1792x1024",  # 16:9 비율
+        quality="standard",
+        n=1
+    )
 
----
+    image_url = response.data[0].url
 
-## 6. 실제 워크플로우 예시
+    # 이미지 다운로드
+    img_data = requests.get(image_url).content
+    Path(output_path).write_bytes(img_data)
 
-### "북한 탈북 실화" 영상 만들기
+    return output_path
 
-```
-1. InVideo AI 접속
 
-2. 프롬프트 입력:
-   "북한에서 탈출한 가족이 20년 만에 재회하는 감동 실화.
-    12분 분량, 시니어 시청자 타깃,
-    감정적인 나레이션, 한국어 자막 포함"
+def generate_all_images(scenes: list[dict], output_dir: str) -> list[str]:
+    """모든 장면 이미지 생성"""
 
-3. 생성 (3~5분 소요)
+    Path(output_dir).mkdir(exist_ok=True)
+    image_paths = []
 
-4. 결과물:
-   - 12분 영상 완성
-   - 자막 자동 삽입
-   - BGM 자동 매칭
-   - 스톡 영상/이미지 자동 배치
+    for scene in scenes:
+        path = f"{output_dir}/scene_{scene['scene']:02d}.png"
+        generate_image(scene["image_prompt"], path)
+        image_paths.append(path)
+        print(f"Generated: {path}")
 
-5. Opus Clip으로 쇼츠 3개 추출
-
-6. 업로드
+    return image_paths
 ```
 
 ---
 
-## 7. 가격 비교표
+## 4. 음성 생성 (Google TTS)
 
-| 서비스 | 무료 | 유료 시작가 | 한국어 | 추천도 |
-|--------|------|-------------|--------|--------|
-| InVideo AI | O | $25/월 | O | ⭐⭐⭐⭐⭐ |
-| Pictory | X | $19/월 | O | ⭐⭐⭐⭐ |
-| Fliki | O | $21/월 | O | ⭐⭐⭐⭐ |
-| Vrew | O | $9.99/월 | O | ⭐⭐⭐⭐ |
-| 미리캔버스 | O | 무료 | O | ⭐⭐⭐ |
-| Opus Clip | O | $19/월 | O | ⭐⭐⭐⭐ |
+```python
+from google.cloud import texttospeech
+
+def generate_audio(text: str, output_path: str) -> str:
+    """Google TTS로 음성 생성"""
+
+    client = texttospeech.TextToSpeechClient()
+
+    synthesis_input = texttospeech.SynthesisInput(text=text)
+
+    voice = texttospeech.VoiceSelectionParams(
+        language_code="ko-KR",
+        name="ko-KR-Wavenet-A",  # 또는 ko-KR-Wavenet-B, C, D
+        ssml_gender=texttospeech.SsmlVoiceGender.FEMALE
+    )
+
+    audio_config = texttospeech.AudioConfig(
+        audio_encoding=texttospeech.AudioEncoding.MP3,
+        speaking_rate=0.9,  # 시니어용 약간 느리게
+        pitch=0.0
+    )
+
+    response = client.synthesize_speech(
+        input=synthesis_input,
+        voice=voice,
+        audio_config=audio_config
+    )
+
+    Path(output_path).write_bytes(response.audio_content)
+    return output_path
+
+
+def generate_all_audio(scenes: list[dict], output_dir: str) -> list[str]:
+    """모든 장면 음성 생성"""
+
+    Path(output_dir).mkdir(exist_ok=True)
+    audio_paths = []
+
+    for scene in scenes:
+        path = f"{output_dir}/scene_{scene['scene']:02d}.mp3"
+        generate_audio(scene["narration"], path)
+        audio_paths.append(path)
+        print(f"Generated: {path}")
+
+    return audio_paths
+```
 
 ---
 
-## 핵심 정리
+## 5. 영상 합성 (MoviePy)
 
-> **키워드만 넣으면 영상 완성되는 서비스 = InVideo AI, Pictory, Fliki**
+```python
+from moviepy.editor import (
+    ImageClip, AudioFileClip, concatenate_videoclips,
+    CompositeVideoClip, TextClip
+)
 
-1. **가장 쉬움**: InVideo AI (키워드 한 줄 → 영상 완성)
-2. **음성 최고**: Fliki (한국어 TTS 자연스러움)
-3. **한국어 특화**: Vrew (국산, 무료 옵션)
-4. **쇼츠 자동화**: Opus Clip (롱폼 → 쇼츠 자동 분할)
+def create_video(image_paths: list[str], audio_paths: list[str],
+                 scenes: list[dict], output_path: str) -> str:
+    """이미지+음성 결합하여 영상 생성"""
+
+    clips = []
+
+    for img_path, audio_path, scene in zip(image_paths, audio_paths, scenes):
+        # 음성 길이에 맞춰 이미지 클립 생성
+        audio = AudioFileClip(audio_path)
+
+        img_clip = (ImageClip(img_path)
+                    .set_duration(audio.duration)
+                    .set_audio(audio)
+                    .resize(height=1080))
+
+        # 자막 추가 (선택)
+        txt_clip = (TextClip(scene["narration"],
+                            fontsize=40,
+                            color='white',
+                            font='NanumGothic',
+                            stroke_color='black',
+                            stroke_width=2)
+                    .set_position(('center', 'bottom'))
+                    .set_duration(audio.duration))
+
+        video = CompositeVideoClip([img_clip, txt_clip])
+        clips.append(video)
+
+    # 전체 영상 결합
+    final = concatenate_videoclips(clips, method="compose")
+    final.write_videofile(output_path, fps=24, codec='libx264')
+
+    return output_path
+```
 
 ---
 
-## Sources
-- [InVideo AI](https://invideo.io)
-- [Pictory](https://pictory.ai)
-- [Fliki](https://fliki.ai)
-- [Vrew](https://vrew.ai)
-- [미리캔버스](https://miricanvas.com)
-- [AI Studios](https://aistudios.com)
-- [Opus Clip](https://opus.pro)
-- [Zapier AI Video Generators Guide](https://zapier.com/blog/best-ai-video-generator/)
+## 6. 전체 파이프라인
+
+```python
+def keyword_to_video(keyword: str, output_dir: str = "./output") -> str:
+    """키워드 입력 → 영상 출력"""
+
+    print(f"=== 키워드: {keyword} ===")
+
+    # 1. 대본 생성
+    print("\n[1/4] 대본 생성 중...")
+    scenes = generate_script(keyword)
+    print(f"  → {len(scenes)}개 장면 생성 완료")
+
+    # 2. 이미지 생성
+    print("\n[2/4] 이미지 생성 중...")
+    image_paths = generate_all_images(scenes, f"{output_dir}/images")
+
+    # 3. 음성 생성
+    print("\n[3/4] 음성 생성 중...")
+    audio_paths = generate_all_audio(scenes, f"{output_dir}/audio")
+
+    # 4. 영상 합성
+    print("\n[4/4] 영상 합성 중...")
+    video_path = create_video(
+        image_paths,
+        audio_paths,
+        scenes,
+        f"{output_dir}/final_video.mp4"
+    )
+
+    print(f"\n=== 완료: {video_path} ===")
+    return video_path
+
+
+# 실행
+if __name__ == "__main__":
+    keyword_to_video("북한에서 탈출한 가족의 20년 만의 재회")
+```
+
+---
+
+## 7. 비용 계산 (12분 영상 기준)
+
+| 항목 | 수량 | 단가 | 비용 |
+|------|------|------|------|
+| GPT-4o (대본) | ~2K 토큰 | $0.01/1K | ~$0.02 |
+| DALL-E 3 이미지 | 25장 | $0.04/장 | ~$1.00 |
+| Google TTS | ~2000자 | 무료 | $0.00 |
+| **총합** | | | **~$1.02/영상** |
+
+---
+
+## 8. Google TTS 설정 방법
+
+```bash
+# 1. Google Cloud 프로젝트 생성
+# 2. Cloud Text-to-Speech API 활성화
+# 3. 서비스 계정 생성 → JSON 키 다운로드
+
+# 4. 환경변수 설정
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your-key.json"
+```
+
+**사용 가능한 한국어 음성**:
+| 음성 ID | 성별 | 특징 |
+|---------|------|------|
+| ko-KR-Wavenet-A | 여성 | 자연스러움 |
+| ko-KR-Wavenet-B | 여성 | 차분함 |
+| ko-KR-Wavenet-C | 남성 | 또렷함 |
+| ko-KR-Wavenet-D | 남성 | 중후함 |
+| ko-KR-Neural2-A | 여성 | 최신, 더 자연스러움 |
+| ko-KR-Neural2-B | 여성 | 최신 |
+| ko-KR-Neural2-C | 남성 | 최신 |
+
+---
+
+## 9. 디렉토리 구조
+
+```
+output/
+├── images/
+│   ├── scene_01.png
+│   ├── scene_02.png
+│   └── ...
+├── audio/
+│   ├── scene_01.mp3
+│   ├── scene_02.mp3
+│   └── ...
+└── final_video.mp4
+```
+
+---
+
+## 핵심 요약
+
+```
+키워드 → GPT(대본) → DALL-E(이미지) → Google TTS(음성) → FFmpeg(합성) → 영상
+```
+
+**예상 비용**: ~$1/영상
+**예상 시간**: 5~10분 (API 호출 시간)
