@@ -432,7 +432,13 @@ const ICPEtcherSimulator = () => {
                 <button onClick={runInterlockCheck} disabled={equipmentState.processing || interlockStatus.checking || !equipmentState.waferLoaded} className={`w-full py-2 rounded font-bold text-sm ${interlockStatus.checking ? 'bg-yellow-600 animate-pulse' : 'bg-orange-600 hover:bg-orange-500'} disabled:opacity-50`}>{interlockStatus.checking ? '🔄 CHECKING...' : '🔍 INTERLOCK CHECK'}</button>
               </div>
 
-              <div className="flex gap-2"><button onClick={loadDefaultRecipe} disabled={equipmentState.processing} className="px-4 py-2 bg-slate-600 hover:bg-slate-500 rounded text-sm disabled:opacity-50">🔄 Reset</button><button onClick={addNewStep} disabled={equipmentState.processing} className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded text-sm disabled:opacity-50">➕ Add Step</button><button onClick={startProcess} disabled={!interlockStatus.passed || !equipmentState.power || !equipmentState.waferLoaded || equipmentState.processing || recipeSteps.length === 0} className="flex-1 py-2 bg-green-600 hover:bg-green-700 rounded font-bold text-sm disabled:opacity-50">▶ START</button><button onClick={() => setPaused(!paused)} disabled={!equipmentState.processing} className={`px-4 py-2 rounded font-bold text-sm disabled:opacity-50 ${paused ? 'bg-yellow-500 hover:bg-yellow-400 animate-pulse' : 'bg-yellow-600 hover:bg-yellow-500'}`}>{paused ? '▶ RESUME' : '⏸ PAUSE'}</button><button onClick={abortProcess} disabled={!equipmentState.processing} className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded font-bold text-sm disabled:opacity-50">⏹ ABORT</button></div>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={loadDefaultRecipe} disabled={equipmentState.processing} className="px-3 py-2 bg-slate-600 hover:bg-slate-500 rounded text-sm disabled:opacity-50">🔄 Reset</button>
+                <button onClick={addNewStep} disabled={equipmentState.processing} className="px-3 py-2 bg-purple-600 hover:bg-purple-500 rounded text-sm disabled:opacity-50">➕ Add</button>
+                <button onClick={startProcess} disabled={!interlockStatus.passed || !equipmentState.power || !equipmentState.waferLoaded || equipmentState.processing || recipeSteps.length === 0} className="flex-1 min-w-[80px] py-2 bg-green-600 hover:bg-green-700 rounded font-bold text-sm disabled:opacity-50">▶ START</button>
+                <button onClick={() => setPaused(!paused)} disabled={!equipmentState.processing} className={`px-3 py-2 rounded font-bold text-sm disabled:opacity-50 ${paused ? 'bg-yellow-500 hover:bg-yellow-400 animate-pulse' : 'bg-yellow-600 hover:bg-yellow-500'}`}>{paused ? '▶️ RESUME' : '⏸️ PAUSE'}</button>
+                <button onClick={abortProcess} disabled={!equipmentState.processing} className="px-3 py-2 bg-red-600 hover:bg-red-700 rounded font-bold text-sm disabled:opacity-50">⏹ ABORT</button>
+              </div>
             </div>)}
 
             {activeTab === 'monitor' && (<div className="space-y-3">
@@ -513,8 +519,8 @@ const ICPEtcherSimulator = () => {
                         <span className="text-xs text-cyan-400 font-mono w-8">{uniformityScale}x</span>
                       </div>
                     </div>
-                    <svg viewBox="0 0 400 280" className="w-full h-72">
-                      <g transform="translate(200, 240)">
+                    <svg viewBox="0 0 400 350" className="w-full h-80">
+                      <g transform="translate(200, 280)">
                         {uniformityMap.map((val, i) => {
                           const row = Math.floor(i / 7);
                           const col = i % 7;
@@ -540,11 +546,13 @@ const ICPEtcherSimulator = () => {
                         <text x="150" y="30" fill="#64748b" fontSize="10" textAnchor="middle">Edge</text>
                         <text x="0" y="-120" fill="#22d3ee" fontSize="11" fontWeight="bold" textAnchor="middle">Center</text>
                       </g>
-                      {/* Color Legend */}
-                      <g transform="translate(360, 60)">
-                        <text x="0" y="0" fill="#94a3b8" fontSize="9">High</text>
-                        <rect x="0" y="8" width="12" height="80" rx="2" fill="url(#uniformityGradient)"/>
-                        <text x="0" y="100" fill="#94a3b8" fontSize="9">Low</text>
+                      {/* Color Legend with units */}
+                      <g transform="translate(350, 40)">
+                        <text x="0" y="0" fill="#94a3b8" fontSize="8">High</text>
+                        <text x="0" y="12" fill="#22d3ee" fontSize="9" fontWeight="bold">{Math.max(...uniformityMap).toFixed(1)}%</text>
+                        <rect x="0" y="20" width="14" height="100" rx="2" fill="url(#uniformityGradient)"/>
+                        <text x="0" y="132" fill="#94a3b8" fontSize="8">Low</text>
+                        <text x="0" y="144" fill="#f87171" fontSize="9" fontWeight="bold">{Math.min(...uniformityMap).toFixed(1)}%</text>
                         <defs>
                           <linearGradient id="uniformityGradient" x1="0%" y1="0%" x2="0%" y2="100%">
                             <stop offset="0%" stopColor="hsl(120,70%,50%)"/>
@@ -577,14 +585,34 @@ const ICPEtcherSimulator = () => {
                         </defs>
                         <rect x="0" y="0" width="500" height="300" fill="#1a1a1a"/>
 
-                        {/* Scale bar */}
-                        <line x1="400" y1="280" x2="480" y2="280" stroke="#fff" strokeWidth="2"/>
-                        <text x="440" y="275" fill="#fff" fontSize="10" textAnchor="middle">100nm</text>
+                        {/* Depth scale markers on left side */}
+                        <g>
+                          <line x1="45" y1="70" x2="45" y2="250" stroke="#fff" strokeWidth="1"/>
+                          <line x1="40" y1="70" x2="50" y2="70" stroke="#fff" strokeWidth="1"/>
+                          <text x="38" y="74" fill="#fff" fontSize="8" textAnchor="end" fontFamily="monospace">0</text>
+                          <line x1="40" y1="115" x2="50" y2="115" stroke="#fff" strokeWidth="1"/>
+                          <text x="38" y="119" fill="#fff" fontSize="8" textAnchor="end" fontFamily="monospace">{Math.round(parseFloat(results.etchDepth) * 0.25)}</text>
+                          <line x1="40" y1="160" x2="50" y2="160" stroke="#fff" strokeWidth="1"/>
+                          <text x="38" y="164" fill="#fff" fontSize="8" textAnchor="end" fontFamily="monospace">{Math.round(parseFloat(results.etchDepth) * 0.5)}</text>
+                          <line x1="40" y1="205" x2="50" y2="205" stroke="#fff" strokeWidth="1"/>
+                          <text x="38" y="209" fill="#fff" fontSize="8" textAnchor="end" fontFamily="monospace">{Math.round(parseFloat(results.etchDepth) * 0.75)}</text>
+                          <line x1="40" y1="250" x2="50" y2="250" stroke="#fff" strokeWidth="1"/>
+                          <text x="38" y="254" fill="#fff" fontSize="8" textAnchor="end" fontFamily="monospace">{results.etchDepth}</text>
+                          <text x="25" y="160" fill="#fff" fontSize="8" textAnchor="middle" fontFamily="monospace" transform="rotate(-90, 25, 160)">nm</text>
+                        </g>
 
-                        {/* Magnification */}
-                        <text x="20" y="20" fill="#00ff00" fontSize="10" fontFamily="monospace">MAG: 50,000x</text>
-                        <text x="20" y="35" fill="#00ff00" fontSize="10" fontFamily="monospace">HV: 5.0kV</text>
-                        <text x="20" y="50" fill="#00ff00" fontSize="10" fontFamily="monospace">WD: 5mm</text>
+                        {/* Horizontal scale bar */}
+                        <g>
+                          <line x1="400" y1="280" x2="480" y2="280" stroke="#fff" strokeWidth="2"/>
+                          <line x1="400" y1="276" x2="400" y2="284" stroke="#fff" strokeWidth="1"/>
+                          <line x1="480" y1="276" x2="480" y2="284" stroke="#fff" strokeWidth="1"/>
+                          <text x="440" y="273" fill="#fff" fontSize="9" textAnchor="middle" fontFamily="monospace">{Math.round(parseFloat(results.etchDepth) * 0.5)} nm</text>
+                        </g>
+
+                        {/* Magnification info */}
+                        <text x="400" y="20" fill="#00ff00" fontSize="9" textAnchor="end" fontFamily="monospace">MAG: 50,000x</text>
+                        <text x="400" y="32" fill="#00ff00" fontSize="9" textAnchor="end" fontFamily="monospace">HV: 5.0kV</text>
+                        <text x="400" y="44" fill="#00ff00" fontSize="9" textAnchor="end" fontFamily="monospace">WD: 5mm</text>
 
                         {/* Draw profile based on pattern */}
                         {waferPattern === 'blank' && (
