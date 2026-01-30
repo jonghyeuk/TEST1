@@ -19,6 +19,7 @@ const ICPEtcherSimulator = () => {
   const [plasmaOn, setPlasmaOn] = useState(false);
   const [plasmaColor, setPlasmaColor] = useState('#8b5cf6');
   const [interlockStatus, setInterlockStatus] = useState({ checked: false, checking: false, passed: false, items: { power: false, vacuum: false, door: false, wafer: false, temp: false, pressure: false, gasLine: false, rf: false } });
+  const [uniformityScale, setUniformityScale] = useState(1);
   const processTimerRef = useRef(null);
   const stateRef = useRef({ idx: 0, stepE: 0, totalE: 0 });
   const logRef = useRef(null);
@@ -448,7 +449,102 @@ const ICPEtcherSimulator = () => {
                 </div>
               </div>
 
-              <div className="bg-slate-800 rounded-lg p-3"><div className="grid grid-cols-2 gap-2 text-sm"><div className="flex justify-between"><span className="text-slate-400">Etch Depth:</span><span className="text-cyan-400 font-mono">{results.etchDepth} nm</span></div><div className="flex justify-between"><span className="text-slate-400">Total Time:</span><span className="text-cyan-400 font-mono">{results.totalTime} sec</span></div><div className="flex justify-between"><span className="text-slate-400">Material:</span><span className="text-cyan-400">{targetMaterial}</span></div><div className="flex justify-between"><span className="text-slate-400">Status:</span><span className="text-green-400">✓ Complete</span></div></div></div><div className="bg-slate-800 rounded-lg p-3"><div className="text-xs text-slate-400 mb-2">Uniformity Map (49-point)</div><div className="grid grid-cols-7 gap-1">{uniformityMap.map((val, i) => { const hue = ((val - 85) / 15) * 120; return <div key={i} className="aspect-square rounded text-xs flex items-center justify-center font-mono" style={{ backgroundColor: `hsl(${hue}, 70%, 40%)` }} title={`${val.toFixed(1)}%`}>{val.toFixed(0)}</div>; })}</div></div></>) : (<div className="flex flex-col items-center justify-center h-64 text-slate-500"><div className="text-4xl mb-3">📊</div><div>Run a process to see results</div></div>)}
+              <div className="bg-slate-800 rounded-lg p-3"><div className="grid grid-cols-2 gap-2 text-sm"><div className="flex justify-between"><span className="text-slate-400">Etch Depth:</span><span className="text-cyan-400 font-mono">{results.etchDepth} nm</span></div><div className="flex justify-between"><span className="text-slate-400">Total Time:</span><span className="text-cyan-400 font-mono">{results.totalTime} sec</span></div><div className="flex justify-between"><span className="text-slate-400">Material:</span><span className="text-cyan-400">{targetMaterial}</span></div><div className="flex justify-between"><span className="text-slate-400">Status:</span><span className="text-green-400">✓ Complete</span></div></div></div><div className="bg-slate-800 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs text-slate-400">Uniformity Map (49-point) - 3D View</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500">Scale:</span>
+                    <input
+                      type="range"
+                      min="1"
+                      max="20"
+                      value={uniformityScale}
+                      onChange={(e) => setUniformityScale(Number(e.target.value))}
+                      className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                    />
+                    <span className="text-xs text-cyan-400 font-mono w-8">{uniformityScale}x</span>
+                  </div>
+                </div>
+                <div className="flex gap-4">
+                  {/* 3D Isometric View */}
+                  <div className="flex-1">
+                    <svg viewBox="0 0 280 200" className="w-full h-48">
+                      <g transform="translate(140, 170)">
+                        {/* Draw 3D bars */}
+                        {uniformityMap.map((val, i) => {
+                          const row = Math.floor(i / 7);
+                          const col = i % 7;
+                          const baseVal = results ? parseFloat(results.uniformity) : 95;
+                          const diff = (val - baseVal) * uniformityScale;
+                          const height = Math.max(2, 20 + diff * 2);
+
+                          // Isometric projection
+                          const isoX = (col - row) * 16;
+                          const isoY = (col + row) * 8 - 56;
+
+                          const hue = ((val - 85) / 15) * 120;
+                          const color = `hsl(${hue}, 70%, 50%)`;
+                          const darkColor = `hsl(${hue}, 70%, 35%)`;
+                          const lightColor = `hsl(${hue}, 70%, 60%)`;
+
+                          return (
+                            <g key={i} transform={`translate(${isoX}, ${isoY})`}>
+                              {/* Top face */}
+                              <polygon
+                                points={`0,${-height} 12,${-height-6} 24,${-height} 12,${-height+6}`}
+                                fill={lightColor}
+                                stroke={color}
+                                strokeWidth="0.5"
+                              />
+                              {/* Left face */}
+                              <polygon
+                                points={`0,${-height} 12,${-height+6} 12,6 0,0`}
+                                fill={color}
+                                stroke={darkColor}
+                                strokeWidth="0.5"
+                              />
+                              {/* Right face */}
+                              <polygon
+                                points={`12,${-height+6} 24,${-height} 24,0 12,6`}
+                                fill={darkColor}
+                                stroke={darkColor}
+                                strokeWidth="0.5"
+                              />
+                              {/* Center marker for middle point */}
+                              {row === 3 && col === 3 && (
+                                <circle cx="12" cy={-height-6} r="3" fill="#fff" opacity="0.8"/>
+                              )}
+                            </g>
+                          );
+                        })}
+                        {/* Axis labels */}
+                        <text x="-100" y="20" fill="#64748b" fontSize="8" textAnchor="middle">Edge</text>
+                        <text x="100" y="20" fill="#64748b" fontSize="8" textAnchor="middle">Edge</text>
+                        <text x="0" y="-80" fill="#64748b" fontSize="8" textAnchor="middle">Center</text>
+                      </g>
+                    </svg>
+                  </div>
+                  {/* Legend & Stats */}
+                  <div className="w-24 space-y-2">
+                    <div className="text-xs text-slate-400">Color Scale</div>
+                    <div className="h-24 w-4 rounded" style={{background: 'linear-gradient(to bottom, hsl(120,70%,50%), hsl(60,70%,50%), hsl(0,70%,50%))'}}/>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-green-400">High</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-red-400">Low</span>
+                    </div>
+                    <div className="pt-2 border-t border-slate-700 space-y-1">
+                      <div className="text-xs text-slate-500">Min: <span className="text-cyan-400">{Math.min(...uniformityMap).toFixed(1)}%</span></div>
+                      <div className="text-xs text-slate-500">Max: <span className="text-cyan-400">{Math.max(...uniformityMap).toFixed(1)}%</span></div>
+                      <div className="text-xs text-slate-500">Range: <span className="text-yellow-400">{(Math.max(...uniformityMap) - Math.min(...uniformityMap)).toFixed(2)}%</span></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-slate-500 text-center">
+                  💡 스케일을 높이면 미세한 차이도 크게 보입니다. 실제 Range: {(Math.max(...uniformityMap) - Math.min(...uniformityMap)).toFixed(2)}%
+                </div>
+              </div></>) : (<div className="flex flex-col items-center justify-center h-64 text-slate-500"><div className="text-4xl mb-3">📊</div><div>Run a process to see results</div></div>)}
             </div>)}
           </div>
         </div>
