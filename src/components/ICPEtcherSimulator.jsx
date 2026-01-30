@@ -469,13 +469,6 @@ const ICPEtcherSimulator = () => {
                   {/* 3D Isometric View */}
                   <div className="flex-1">
                     <svg viewBox="0 0 280 200" className="w-full h-48">
-                      <defs>
-                        <linearGradient id="barGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stopColor="rgba(255,255,255,0.3)"/>
-                          <stop offset="100%" stopColor="rgba(0,0,0,0.3)"/>
-                        </linearGradient>
-                      </defs>
-                      {/* Grid base */}
                       <g transform="translate(140, 170)">
                         {/* Draw 3D bars */}
                         {uniformityMap.map((val, i) => {
