@@ -506,53 +506,71 @@ const ICPEtcherSimulator = () => {
                 </>)}
 
                 {/* Uniformity View */}
-                {resultView === 'uniformity' && (
+                {resultView === 'uniformity' && (() => {
+                  const baseDepth = parseFloat(results.etchDepth);
+                  const minUnif = Math.min(...uniformityMap);
+                  const maxUnif = Math.max(...uniformityMap);
+                  const minDepth = (baseDepth * minUnif / 100).toFixed(1);
+                  const maxDepth = (baseDepth * maxUnif / 100).toFixed(1);
+                  const depthRange = (maxDepth - minDepth).toFixed(1);
+                  return (
                   <div className="bg-slate-800 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="text-sm text-slate-300 font-medium">Uniformity Map (49-point) - 3D View</div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-slate-500">Min: <span className="text-cyan-400">{Math.min(...uniformityMap).toFixed(1)}%</span></span>
-                        <span className="text-xs text-slate-500">Max: <span className="text-cyan-400">{Math.max(...uniformityMap).toFixed(1)}%</span></span>
-                        <span className="text-xs text-slate-500">Range: <span className="text-yellow-400">{(Math.max(...uniformityMap) - Math.min(...uniformityMap)).toFixed(2)}%</span></span>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm text-slate-300 font-medium">Etch Depth Uniformity Map (49-point)</div>
+                      <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-500 ml-2">Scale:</span>
-                        <input type="range" min="1" max="20" value={uniformityScale} onChange={(e) => setUniformityScale(Number(e.target.value))} className="w-24 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"/>
+                        <input type="range" min="1" max="20" value={uniformityScale} onChange={(e) => setUniformityScale(Number(e.target.value))} className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"/>
                         <span className="text-xs text-cyan-400 font-mono w-8">{uniformityScale}x</span>
                       </div>
                     </div>
-                    <svg viewBox="0 0 400 350" className="w-full h-80">
-                      <g transform="translate(200, 280)">
+                    <div className="flex justify-between text-xs mb-2 bg-slate-700/50 rounded px-3 py-1.5">
+                      <span className="text-slate-400">Min: <span className="text-cyan-400 font-mono">{minDepth}nm</span> <span className="text-slate-500">({minUnif.toFixed(1)}%)</span></span>
+                      <span className="text-slate-400">Max: <span className="text-green-400 font-mono">{maxDepth}nm</span> <span className="text-slate-500">({maxUnif.toFixed(1)}%)</span></span>
+                      <span className="text-slate-400">Range: <span className="text-yellow-400 font-mono">Δ{depthRange}nm</span></span>
+                      <span className="text-slate-400">Base: <span className="text-purple-400 font-mono">{baseDepth}nm</span></span>
+                    </div>
+                    <svg viewBox="0 0 420 320" className="w-full" style={{height: '340px'}}>
+                      <g transform="translate(200, 220)">
                         {uniformityMap.map((val, i) => {
                           const row = Math.floor(i / 7);
                           const col = i % 7;
                           const baseVal = results ? parseFloat(results.uniformity) : 95;
                           const diff = (val - baseVal) * uniformityScale;
                           const height = Math.max(3, 30 + diff * 3);
-                          const isoX = (col - row) * 24;
-                          const isoY = (col + row) * 12 - 72;
+                          const actualDepth = (baseDepth * val / 100).toFixed(1);
+                          const isoX = (col - row) * 22;
+                          const isoY = (col + row) * 11 - 66;
                           const hue = ((val - 85) / 15) * 120;
                           const color = `hsl(${hue}, 70%, 50%)`;
                           const darkColor = `hsl(${hue}, 70%, 35%)`;
                           const lightColor = `hsl(${hue}, 70%, 60%)`;
                           return (
                             <g key={i} transform={`translate(${isoX}, ${isoY})`}>
-                              <polygon points={`0,${-height} 18,${-height-9} 36,${-height} 18,${-height+9}`} fill={lightColor} stroke={color} strokeWidth="0.5"/>
-                              <polygon points={`0,${-height} 18,${-height+9} 18,9 0,0`} fill={color} stroke={darkColor} strokeWidth="0.5"/>
-                              <polygon points={`18,${-height+9} 36,${-height} 36,0 18,9`} fill={darkColor} stroke={darkColor} strokeWidth="0.5"/>
-                              {row === 3 && col === 3 && <circle cx="18" cy={-height-9} r="4" fill="#fff" opacity="0.9"/>}
+                              <polygon points={`0,${-height} 16,${-height-8} 32,${-height} 16,${-height+8}`} fill={lightColor} stroke={color} strokeWidth="0.5"/>
+                              <polygon points={`0,${-height} 16,${-height+8} 16,8 0,0`} fill={color} stroke={darkColor} strokeWidth="0.5"/>
+                              <polygon points={`16,${-height+8} 32,${-height} 32,0 16,8`} fill={darkColor} stroke={darkColor} strokeWidth="0.5"/>
+                              {row === 3 && col === 3 && <circle cx="16" cy={-height-8} r="3" fill="#fff" opacity="0.9"/>}
                             </g>
                           );
                         })}
-                        <text x="-150" y="30" fill="#64748b" fontSize="10" textAnchor="middle">Edge</text>
-                        <text x="150" y="30" fill="#64748b" fontSize="10" textAnchor="middle">Edge</text>
-                        <text x="0" y="-120" fill="#22d3ee" fontSize="11" fontWeight="bold" textAnchor="middle">Center</text>
+                        <text x="-130" y="50" fill="#64748b" fontSize="9" textAnchor="middle">Edge</text>
+                        <text x="130" y="50" fill="#64748b" fontSize="9" textAnchor="middle">Edge</text>
+                        <text x="0" y="-95" fill="#22d3ee" fontSize="10" fontWeight="bold" textAnchor="middle">Center</text>
                       </g>
-                      {/* Color Legend with units */}
-                      <g transform="translate(350, 40)">
-                        <text x="0" y="0" fill="#94a3b8" fontSize="8">High</text>
-                        <text x="0" y="12" fill="#22d3ee" fontSize="9" fontWeight="bold">{Math.max(...uniformityMap).toFixed(1)}%</text>
-                        <rect x="0" y="20" width="14" height="100" rx="2" fill="url(#uniformityGradient)"/>
-                        <text x="0" y="132" fill="#94a3b8" fontSize="8">Low</text>
-                        <text x="0" y="144" fill="#f87171" fontSize="9" fontWeight="bold">{Math.min(...uniformityMap).toFixed(1)}%</text>
+                      {/* Depth Scale Legend */}
+                      <g transform="translate(360, 30)">
+                        <text x="0" y="0" fill="#94a3b8" fontSize="9" fontWeight="bold">Depth</text>
+                        <text x="0" y="14" fill="#22d3ee" fontSize="10" fontWeight="bold" fontFamily="monospace">{maxDepth}nm</text>
+                        <text x="0" y="26" fill="#4ade80" fontSize="8">(max)</text>
+                        <rect x="0" y="34" width="16" height="120" rx="2" fill="url(#uniformityGradient)"/>
+                        {/* Scale ticks */}
+                        <line x1="18" y1="34" x2="24" y2="34" stroke="#64748b" strokeWidth="1"/>
+                        <line x1="18" y1="64" x2="24" y2="64" stroke="#64748b" strokeWidth="1"/>
+                        <line x1="18" y1="94" x2="24" y2="94" stroke="#64748b" strokeWidth="1"/>
+                        <line x1="18" y1="124" x2="24" y2="124" stroke="#64748b" strokeWidth="1"/>
+                        <line x1="18" y1="154" x2="24" y2="154" stroke="#64748b" strokeWidth="1"/>
+                        <text x="0" y="168" fill="#f87171" fontSize="10" fontWeight="bold" fontFamily="monospace">{minDepth}nm</text>
+                        <text x="0" y="180" fill="#f87171" fontSize="8">(min)</text>
                         <defs>
                           <linearGradient id="uniformityGradient" x1="0%" y1="0%" x2="0%" y2="100%">
                             <stop offset="0%" stopColor="hsl(120,70%,50%)"/>
@@ -562,9 +580,9 @@ const ICPEtcherSimulator = () => {
                         </defs>
                       </g>
                     </svg>
-                    <div className="text-xs text-slate-500 text-center mt-2">💡 스케일을 높이면 미세한 차이도 크게 보입니다</div>
+                    <div className="text-xs text-slate-500 text-center">💡 높이가 높을수록 더 많이 식각됨 (Scale 조절로 미세 차이 확대)</div>
                   </div>
-                )}
+                );})()}
 
                 {/* Profile (SEM) View */}
                 {resultView === 'profile' && (
