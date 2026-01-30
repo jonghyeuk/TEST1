@@ -442,16 +442,11 @@ const ICPEtcherSimulator = () => {
             </div>)}
 
             {activeTab === 'monitor' && (<div className="space-y-3">
-              {/* Process Control Buttons - visible during processing */}
+              {/* Pause/Resume Button */}
               {equipmentState.processing && (
-                <div className="flex gap-2">
-                  <button onClick={() => setPaused(!paused)} className={`flex-1 py-3 rounded-lg font-bold text-lg transition-all ${paused ? 'bg-green-500 hover:bg-green-400 animate-pulse text-white' : 'bg-yellow-500 hover:bg-yellow-400 text-black'}`}>
-                    {paused ? '▶️ RESUME' : '⏸️ PAUSE'}
-                  </button>
-                  <button onClick={abortProcess} className="px-6 py-3 bg-red-600 hover:bg-red-500 rounded-lg font-bold text-lg text-white">
-                    ⏹️ ABORT
-                  </button>
-                </div>
+                <button onClick={() => setPaused(!paused)} className={`w-full py-2 rounded font-bold text-sm transition-all ${paused ? 'bg-green-500 hover:bg-green-400 animate-pulse text-white' : 'bg-yellow-500 hover:bg-yellow-400 text-black'}`}>
+                  {paused ? '▶️ RESUME' : '⏸️ PAUSE'}
+                </button>
               )}
               <div className="grid grid-cols-3 gap-3"><div className="bg-slate-800 rounded-lg p-3 border border-slate-700"><div className="text-xs text-slate-400 mb-1">⏱ Elapsed Time</div><div className="text-3xl font-mono text-cyan-400 font-bold">{formatTime(elapsedTime)}</div><div className="text-xs text-slate-500">Total: {formatTime(totalTime)}</div></div><div className="bg-slate-800 rounded-lg p-3 border border-slate-700 col-span-2"><div className="text-xs text-slate-400 mb-1">📍 Current Step</div>{cs ? (<div><div className="text-xl font-bold text-yellow-400">{cs.name}</div><div className="flex items-center gap-2 mt-1"><div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden"><div className="h-full bg-yellow-500 transition-all" style={{ width: `${(stepElapsedTime / cs.time) * 100}%` }}/></div><span className="text-xs text-slate-400">{stepElapsedTime}/{cs.time}s</span></div></div>) : (<div className="text-xl text-slate-500">Idle</div>)}</div></div>
               {cs && (<div className="bg-gradient-to-r from-cyan-900/30 to-blue-900/30 rounded-lg p-3 border border-cyan-700"><div className="text-xs text-cyan-400 mb-2 font-semibold">📋 Current Recipe Parameters</div><div className="grid grid-cols-5 gap-2 text-center text-xs"><div className="bg-slate-800/50 rounded p-2"><div className="text-slate-400">Pressure</div><div className="text-lg font-mono text-green-400">{cs.pressure}</div><div className="text-slate-500">mTorr</div></div><div className="bg-slate-800/50 rounded p-2"><div className="text-slate-400">Source</div><div className="text-lg font-mono text-purple-400">{cs.sourcePower}</div><div className="text-slate-500">W</div></div><div className="bg-slate-800/50 rounded p-2"><div className="text-slate-400">Bias</div><div className="text-lg font-mono text-blue-400">{cs.biasPower}</div><div className="text-slate-500">W</div></div><div className="bg-slate-800/50 rounded p-2 col-span-2"><div className="text-slate-400 mb-1">Gas Flow (sccm)</div><div className="flex flex-wrap gap-1 justify-center text-xs">{cs.cl2 > 0 && <span className="bg-green-700 px-1 rounded">Cl₂:{cs.cl2}</span>}{cs.hbr > 0 && <span className="bg-yellow-700 px-1 rounded">HBr:{cs.hbr}</span>}{cs.cf4 > 0 && <span className="bg-cyan-700 px-1 rounded">CF₄:{cs.cf4}</span>}{cs.chf3 > 0 && <span className="bg-blue-700 px-1 rounded">CHF₃:{cs.chf3}</span>}{cs.o2 > 0 && <span className="bg-orange-700 px-1 rounded">O₂:{cs.o2}</span>}{cs.ar > 0 && <span className="bg-purple-700 px-1 rounded">Ar:{cs.ar}</span>}{cs.n2 > 0 && <span className="bg-slate-600 px-1 rounded">N₂:{cs.n2}</span>}</div></div></div></div>)}
