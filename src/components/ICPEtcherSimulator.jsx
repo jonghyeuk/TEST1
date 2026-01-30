@@ -20,7 +20,16 @@ const ICPEtcherSimulator = () => {
   const [plasmaColor, setPlasmaColor] = useState('#8b5cf6');
   const [interlockStatus, setInterlockStatus] = useState({ checked: false, checking: false, passed: false, items: { power: false, vacuum: false, door: false, wafer: false, temp: false, pressure: false, gasLine: false, rf: false } });
   const [uniformityScale, setUniformityScale] = useState(1);
+  const [waferPattern, setWaferPattern] = useState('blank');
+  const [resultView, setResultView] = useState('summary');
   const processTimerRef = useRef(null);
+
+  // Standard wafer patterns
+  const waferPatterns = {
+    blank: { name: 'Blank Wafer', desc: 'No pattern', cd: 0, pitch: 0, ar: 0 },
+    lineSpace: { name: 'Line/Space', desc: '100nm L/S, 1:1', cd: 100, pitch: 200, ar: 2.0 },
+    contactHole: { name: 'Contact Hole', desc: '80nm dia, AR 5:1', cd: 80, pitch: 160, ar: 5.0 }
+  };
   const stateRef = useRef({ idx: 0, stepE: 0, totalE: 0 });
   const logRef = useRef(null);
   const SPEED = 2;
@@ -374,6 +383,21 @@ const ICPEtcherSimulator = () => {
           {/* Controls */}
           <div className="p-3 border-t border-slate-700 space-y-2">
             <button onClick={togglePower} disabled={equipmentState.processing} className={`w-full py-2 rounded font-bold text-sm transition-all ${equipmentState.power ? 'bg-green-600 hover:bg-green-700 shadow-lg shadow-green-900/50' : 'bg-red-600 hover:bg-red-700'} disabled:opacity-50`}>{equipmentState.power ? '⚡ POWER ON' : '○ POWER OFF'}</button>
+            {/* Pattern Selection */}
+            <div className="bg-slate-700/50 rounded p-2">
+              <div className="text-xs text-slate-400 mb-1">Wafer Pattern:</div>
+              <select
+                value={waferPattern}
+                onChange={(e) => setWaferPattern(e.target.value)}
+                disabled={equipmentState.waferLoaded || !equipmentState.power}
+                className="w-full bg-slate-700 text-white text-xs rounded px-2 py-1 disabled:opacity-50"
+              >
+                {Object.entries(waferPatterns).map(([key, pat]) => (
+                  <option key={key} value={key}>{pat.name}</option>
+                ))}
+              </select>
+              <div className="text-xs text-slate-500 mt-1">{waferPatterns[waferPattern].desc}</div>
+            </div>
             <button onClick={toggleWaferLoad} disabled={!equipmentState.power || equipmentState.processing} className={`w-full py-2 rounded font-bold text-sm transition-all ${equipmentState.waferLoaded ? 'bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-900/50' : 'bg-slate-600 hover:bg-slate-500'} disabled:opacity-50`}>{equipmentState.waferLoaded ? '📀 WAFER LOADED' : '○ LOAD WAFER'}</button>
           </div>
         </div>
@@ -417,134 +441,223 @@ const ICPEtcherSimulator = () => {
             </div>)}
 
             {activeTab === 'results' && (<div className="space-y-3">
-              {results ? (<><div className="grid grid-cols-2 gap-3"><div className="bg-gradient-to-br from-green-900/50 to-green-800/30 rounded-lg p-3 border border-green-700"><div className="text-xs text-green-400">Etch Rate</div><div className="text-2xl font-bold text-green-300">{results.etchRate}</div><div className="text-xs text-green-500">nm/min</div></div><div className="bg-gradient-to-br from-blue-900/50 to-blue-800/30 rounded-lg p-3 border border-blue-700"><div className="text-xs text-blue-400">Selectivity</div><div className="text-2xl font-bold text-blue-300">{results.selectivity}:1</div><div className="text-xs text-blue-500">vs underlayer</div></div><div className="bg-gradient-to-br from-purple-900/50 to-purple-800/30 rounded-lg p-3 border border-purple-700"><div className="text-xs text-purple-400">Uniformity</div><div className="text-2xl font-bold text-purple-300">{results.uniformity}%</div><div className="text-xs text-purple-500">across wafer</div></div><div className="bg-gradient-to-br from-orange-900/50 to-orange-800/30 rounded-lg p-3 border border-orange-700"><div className="text-xs text-orange-400">Profile Angle</div><div className="text-2xl font-bold text-orange-300">{results.profileAngle}°</div><div className="text-xs text-orange-500">sidewall</div></div></div>
+              {results ? (<>
+                {/* View Selector */}
+                <div className="flex items-center justify-between">
+                  <select value={resultView} onChange={(e) => setResultView(e.target.value)} className="bg-slate-700 text-white text-sm rounded px-3 py-1.5 border border-slate-600">
+                    <option value="summary">📊 Summary</option>
+                    <option value="uniformity">🗺️ Uniformity Map</option>
+                    <option value="profile">🔬 Profile (SEM)</option>
+                  </select>
+                  <div className="text-xs text-slate-400">Pattern: <span className="text-cyan-400">{waferPatterns[waferPattern].name}</span></div>
+                </div>
 
-              {/* 물리 분석 패널 */}
-              <div className="bg-gradient-to-r from-cyan-900/30 to-blue-900/30 rounded-lg p-3 border border-cyan-700">
-                <div className="text-xs text-cyan-400 font-bold mb-2">📊 Physics Analysis</div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="text-xs text-slate-400 mb-1">Plasma Parameters</div>
-                    <div className="space-y-1 text-xs">
-                      <div className="flex justify-between"><span className="text-slate-500">Ion Flux:</span><span className="text-cyan-300 font-mono">{results.ionFlux} a.u.</span></div>
-                      <div className="flex justify-between"><span className="text-slate-500">Ion Energy:</span><span className="text-cyan-300 font-mono">{results.ionEnergy} eV</span></div>
-                      <div className="flex justify-between"><span className="text-slate-500">Dissociation:</span><span className="text-cyan-300 font-mono">{results.dissociationRate}%</span></div>
+                {/* Summary View */}
+                {resultView === 'summary' && (<>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-gradient-to-br from-green-900/50 to-green-800/30 rounded-lg p-3 border border-green-700"><div className="text-xs text-green-400">Etch Rate</div><div className="text-2xl font-bold text-green-300">{results.etchRate}</div><div className="text-xs text-green-500">nm/min</div></div>
+                    <div className="bg-gradient-to-br from-blue-900/50 to-blue-800/30 rounded-lg p-3 border border-blue-700"><div className="text-xs text-blue-400">Selectivity</div><div className="text-2xl font-bold text-blue-300">{results.selectivity}:1</div><div className="text-xs text-blue-500">vs underlayer</div></div>
+                    <div className="bg-gradient-to-br from-purple-900/50 to-purple-800/30 rounded-lg p-3 border border-purple-700"><div className="text-xs text-purple-400">Uniformity</div><div className="text-2xl font-bold text-purple-300">{results.uniformity}%</div><div className="text-xs text-purple-500">across wafer</div></div>
+                    <div className="bg-gradient-to-br from-orange-900/50 to-orange-800/30 rounded-lg p-3 border border-orange-700"><div className="text-xs text-orange-400">Profile Angle</div><div className="text-2xl font-bold text-orange-300">{results.profileAngle}°</div><div className="text-xs text-orange-500">sidewall</div></div>
+                  </div>
+                  <div className="bg-gradient-to-r from-cyan-900/30 to-blue-900/30 rounded-lg p-3 border border-cyan-700">
+                    <div className="text-xs text-cyan-400 font-bold mb-2">📊 Physics Analysis</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-xs text-slate-400 mb-1">Plasma Parameters</div>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between"><span className="text-slate-500">Ion Flux:</span><span className="text-cyan-300 font-mono">{results.ionFlux} a.u.</span></div>
+                          <div className="flex justify-between"><span className="text-slate-500">Ion Energy:</span><span className="text-cyan-300 font-mono">{results.ionEnergy} eV</span></div>
+                          <div className="flex justify-between"><span className="text-slate-500">Dissociation:</span><span className="text-cyan-300 font-mono">{results.dissociationRate}%</span></div>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-400 mb-1">Etch Mechanism</div>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between"><span className="text-slate-500">Ion Contrib:</span><span className="text-yellow-300 font-mono">{results.ionContrib} nm/min</span></div>
+                          <div className="flex justify-between"><span className="text-slate-500">Radical Contrib:</span><span className="text-green-300 font-mono">{results.radContrib} nm/min</span></div>
+                        </div>
+                        <div className="mt-2 h-3 bg-slate-700 rounded-full overflow-hidden flex">
+                          <div className="bg-yellow-500 h-full" style={{width: `${(parseFloat(results.ionContrib) / parseFloat(results.etchRate)) * 100}%`}}/>
+                          <div className="bg-green-500 h-full" style={{width: `${(parseFloat(results.radContrib) / parseFloat(results.etchRate)) * 100}%`}}/>
+                        </div>
+                        <div className="flex justify-between text-xs mt-0.5"><span className="text-yellow-400">Ion</span><span className="text-green-400">Radical</span></div>
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-slate-700 text-xs text-slate-400"><span className="text-cyan-400">💡 </span>{results.analysisText}</div>
+                  </div>
+                  <div className="bg-slate-800 rounded-lg p-3">
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex justify-between"><span className="text-slate-400">Etch Depth:</span><span className="text-cyan-400 font-mono">{results.etchDepth} nm</span></div>
+                      <div className="flex justify-between"><span className="text-slate-400">Total Time:</span><span className="text-cyan-400 font-mono">{results.totalTime} sec</span></div>
+                      <div className="flex justify-between"><span className="text-slate-400">Material:</span><span className="text-cyan-400">{targetMaterial}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-400">Pattern:</span><span className="text-cyan-400">{waferPatterns[waferPattern].name}</span></div>
                     </div>
                   </div>
-                  <div>
-                    <div className="text-xs text-slate-400 mb-1">Etch Mechanism</div>
-                    <div className="space-y-1 text-xs">
-                      <div className="flex justify-between"><span className="text-slate-500">Ion Contrib:</span><span className="text-yellow-300 font-mono">{results.ionContrib} nm/min</span></div>
-                      <div className="flex justify-between"><span className="text-slate-500">Radical Contrib:</span><span className="text-green-300 font-mono">{results.radContrib} nm/min</span></div>
-                    </div>
-                    <div className="mt-2 h-3 bg-slate-700 rounded-full overflow-hidden flex">
-                      <div className="bg-yellow-500 h-full" style={{width: `${(parseFloat(results.ionContrib) / parseFloat(results.etchRate)) * 100}%`}} title="Ion"/>
-                      <div className="bg-green-500 h-full" style={{width: `${(parseFloat(results.radContrib) / parseFloat(results.etchRate)) * 100}%`}} title="Radical"/>
-                    </div>
-                    <div className="flex justify-between text-xs mt-0.5"><span className="text-yellow-400">Ion</span><span className="text-green-400">Radical</span></div>
-                  </div>
-                </div>
-                <div className="mt-2 pt-2 border-t border-slate-700 text-xs text-slate-400">
-                  <span className="text-cyan-400">💡 </span>{results.analysisText}
-                </div>
-              </div>
+                </>)}
 
-              <div className="bg-slate-800 rounded-lg p-3"><div className="grid grid-cols-2 gap-2 text-sm"><div className="flex justify-between"><span className="text-slate-400">Etch Depth:</span><span className="text-cyan-400 font-mono">{results.etchDepth} nm</span></div><div className="flex justify-between"><span className="text-slate-400">Total Time:</span><span className="text-cyan-400 font-mono">{results.totalTime} sec</span></div><div className="flex justify-between"><span className="text-slate-400">Material:</span><span className="text-cyan-400">{targetMaterial}</span></div><div className="flex justify-between"><span className="text-slate-400">Status:</span><span className="text-green-400">✓ Complete</span></div></div></div><div className="bg-slate-800 rounded-lg p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs text-slate-400">Uniformity Map (49-point) - 3D View</div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500">Scale:</span>
-                    <input
-                      type="range"
-                      min="1"
-                      max="20"
-                      value={uniformityScale}
-                      onChange={(e) => setUniformityScale(Number(e.target.value))}
-                      className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"
-                    />
-                    <span className="text-xs text-cyan-400 font-mono w-8">{uniformityScale}x</span>
-                  </div>
-                </div>
-                <div className="flex gap-4">
-                  {/* 3D Isometric View */}
-                  <div className="flex-1">
-                    <svg viewBox="0 0 280 200" className="w-full h-48">
-                      <g transform="translate(140, 170)">
-                        {/* Draw 3D bars */}
+                {/* Uniformity View */}
+                {resultView === 'uniformity' && (
+                  <div className="bg-slate-800 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-sm text-slate-300 font-medium">Uniformity Map (49-point) - 3D View</div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-slate-500">Min: <span className="text-cyan-400">{Math.min(...uniformityMap).toFixed(1)}%</span></span>
+                        <span className="text-xs text-slate-500">Max: <span className="text-cyan-400">{Math.max(...uniformityMap).toFixed(1)}%</span></span>
+                        <span className="text-xs text-slate-500">Range: <span className="text-yellow-400">{(Math.max(...uniformityMap) - Math.min(...uniformityMap)).toFixed(2)}%</span></span>
+                        <span className="text-xs text-slate-500 ml-2">Scale:</span>
+                        <input type="range" min="1" max="20" value={uniformityScale} onChange={(e) => setUniformityScale(Number(e.target.value))} className="w-24 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"/>
+                        <span className="text-xs text-cyan-400 font-mono w-8">{uniformityScale}x</span>
+                      </div>
+                    </div>
+                    <svg viewBox="0 0 400 280" className="w-full h-72">
+                      <g transform="translate(200, 240)">
                         {uniformityMap.map((val, i) => {
                           const row = Math.floor(i / 7);
                           const col = i % 7;
                           const baseVal = results ? parseFloat(results.uniformity) : 95;
                           const diff = (val - baseVal) * uniformityScale;
-                          const height = Math.max(2, 20 + diff * 2);
-
-                          // Isometric projection
-                          const isoX = (col - row) * 16;
-                          const isoY = (col + row) * 8 - 56;
-
+                          const height = Math.max(3, 30 + diff * 3);
+                          const isoX = (col - row) * 24;
+                          const isoY = (col + row) * 12 - 72;
                           const hue = ((val - 85) / 15) * 120;
                           const color = `hsl(${hue}, 70%, 50%)`;
                           const darkColor = `hsl(${hue}, 70%, 35%)`;
                           const lightColor = `hsl(${hue}, 70%, 60%)`;
-
                           return (
                             <g key={i} transform={`translate(${isoX}, ${isoY})`}>
-                              {/* Top face */}
-                              <polygon
-                                points={`0,${-height} 12,${-height-6} 24,${-height} 12,${-height+6}`}
-                                fill={lightColor}
-                                stroke={color}
-                                strokeWidth="0.5"
-                              />
-                              {/* Left face */}
-                              <polygon
-                                points={`0,${-height} 12,${-height+6} 12,6 0,0`}
-                                fill={color}
-                                stroke={darkColor}
-                                strokeWidth="0.5"
-                              />
-                              {/* Right face */}
-                              <polygon
-                                points={`12,${-height+6} 24,${-height} 24,0 12,6`}
-                                fill={darkColor}
-                                stroke={darkColor}
-                                strokeWidth="0.5"
-                              />
-                              {/* Center marker for middle point */}
-                              {row === 3 && col === 3 && (
-                                <circle cx="12" cy={-height-6} r="3" fill="#fff" opacity="0.8"/>
-                              )}
+                              <polygon points={`0,${-height} 18,${-height-9} 36,${-height} 18,${-height+9}`} fill={lightColor} stroke={color} strokeWidth="0.5"/>
+                              <polygon points={`0,${-height} 18,${-height+9} 18,9 0,0`} fill={color} stroke={darkColor} strokeWidth="0.5"/>
+                              <polygon points={`18,${-height+9} 36,${-height} 36,0 18,9`} fill={darkColor} stroke={darkColor} strokeWidth="0.5"/>
+                              {row === 3 && col === 3 && <circle cx="18" cy={-height-9} r="4" fill="#fff" opacity="0.9"/>}
                             </g>
                           );
                         })}
-                        {/* Axis labels */}
-                        <text x="-100" y="20" fill="#64748b" fontSize="8" textAnchor="middle">Edge</text>
-                        <text x="100" y="20" fill="#64748b" fontSize="8" textAnchor="middle">Edge</text>
-                        <text x="0" y="-80" fill="#64748b" fontSize="8" textAnchor="middle">Center</text>
+                        <text x="-150" y="30" fill="#64748b" fontSize="10" textAnchor="middle">Edge</text>
+                        <text x="150" y="30" fill="#64748b" fontSize="10" textAnchor="middle">Edge</text>
+                        <text x="0" y="-120" fill="#22d3ee" fontSize="11" fontWeight="bold" textAnchor="middle">Center</text>
+                      </g>
+                      {/* Color Legend */}
+                      <g transform="translate(360, 60)">
+                        <text x="0" y="0" fill="#94a3b8" fontSize="9">High</text>
+                        <rect x="0" y="8" width="12" height="80" rx="2" fill="url(#uniformityGradient)"/>
+                        <text x="0" y="100" fill="#94a3b8" fontSize="9">Low</text>
+                        <defs>
+                          <linearGradient id="uniformityGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stopColor="hsl(120,70%,50%)"/>
+                            <stop offset="50%" stopColor="hsl(60,70%,50%)"/>
+                            <stop offset="100%" stopColor="hsl(0,70%,50%)"/>
+                          </linearGradient>
+                        </defs>
                       </g>
                     </svg>
+                    <div className="text-xs text-slate-500 text-center mt-2">💡 스케일을 높이면 미세한 차이도 크게 보입니다</div>
                   </div>
-                  {/* Legend & Stats */}
-                  <div className="w-24 space-y-2">
-                    <div className="text-xs text-slate-400">Color Scale</div>
-                    <div className="h-24 w-4 rounded" style={{background: 'linear-gradient(to bottom, hsl(120,70%,50%), hsl(60,70%,50%), hsl(0,70%,50%))'}}/>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-green-400">High</span>
+                )}
+
+                {/* Profile (SEM) View */}
+                {resultView === 'profile' && (
+                  <div className="bg-slate-800 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-sm text-slate-300 font-medium">🔬 Cross-Section Profile (SEM Style)</div>
+                      <div className="text-xs text-slate-400">Sidewall Angle: <span className="text-cyan-400">{results.profileAngle}°</span></div>
                     </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-red-400">Low</span>
+                    <div className="bg-black rounded-lg p-2 border border-slate-600">
+                      <svg viewBox="0 0 500 300" className="w-full h-64">
+                        {/* SEM noise background */}
+                        <defs>
+                          <filter id="semNoise">
+                            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise"/>
+                            <feColorMatrix type="saturate" values="0"/>
+                            <feBlend in="SourceGraphic" in2="noise" mode="multiply"/>
+                          </filter>
+                        </defs>
+                        <rect x="0" y="0" width="500" height="300" fill="#1a1a1a"/>
+
+                        {/* Scale bar */}
+                        <line x1="400" y1="280" x2="480" y2="280" stroke="#fff" strokeWidth="2"/>
+                        <text x="440" y="275" fill="#fff" fontSize="10" textAnchor="middle">100nm</text>
+
+                        {/* Magnification */}
+                        <text x="20" y="20" fill="#00ff00" fontSize="10" fontFamily="monospace">MAG: 50,000x</text>
+                        <text x="20" y="35" fill="#00ff00" fontSize="10" fontFamily="monospace">HV: 5.0kV</text>
+                        <text x="20" y="50" fill="#00ff00" fontSize="10" fontFamily="monospace">WD: 5mm</text>
+
+                        {/* Draw profile based on pattern */}
+                        {waferPattern === 'blank' && (
+                          <g filter="url(#semNoise)">
+                            {/* Simple etched surface */}
+                            <rect x="50" y="100" width="400" height="40" fill="#888"/>
+                            <rect x="50" y="140" width="400" height="120" fill="#444"/>
+                            <text x="250" y="200" fill="#aaa" fontSize="12" textAnchor="middle">Blank Wafer - Uniform Etch</text>
+                            <text x="250" y="220" fill="#666" fontSize="10" textAnchor="middle">Depth: {results.etchDepth}nm</text>
+                          </g>
+                        )}
+
+                        {waferPattern === 'lineSpace' && (
+                          <g filter="url(#semNoise)">
+                            {/* Line/Space pattern */}
+                            {[0,1,2,3,4].map(i => {
+                              const x = 80 + i * 85;
+                              const angle = parseFloat(results.profileAngle);
+                              const depth = parseFloat(results.etchDepth) * 0.8;
+                              const tanAngle = Math.tan((90 - angle) * Math.PI / 180);
+                              const bottomOffset = depth * tanAngle * 0.3;
+                              return (
+                                <g key={i}>
+                                  {/* Mask layer */}
+                                  <rect x={x} y="80" width="40" height="25" fill="#aaa"/>
+                                  {/* Etched trench */}
+                                  <polygon points={`${x},105 ${x+bottomOffset},${105+depth*0.6} ${x+40-bottomOffset},${105+depth*0.6} ${x+40},105`} fill="#222"/>
+                                  {/* Sidewalls highlight */}
+                                  <line x1={x} y1="105" x2={x+bottomOffset} y2={105+depth*0.6} stroke="#555" strokeWidth="2"/>
+                                  <line x1={x+40} y1="105" x2={x+40-bottomOffset} y2={105+depth*0.6} stroke="#333" strokeWidth="2"/>
+                                  {/* Substrate */}
+                                  <rect x={x-10} y={105+depth*0.6} width="60" height="80" fill="#444"/>
+                                </g>
+                              );
+                            })}
+                            <text x="250" y="270" fill="#00ff00" fontSize="10" textAnchor="middle" fontFamily="monospace">L/S Pattern | CD: 100nm | Pitch: 200nm | Angle: {results.profileAngle}°</text>
+                          </g>
+                        )}
+
+                        {waferPattern === 'contactHole' && (
+                          <g filter="url(#semNoise)">
+                            {/* Contact holes */}
+                            {[0,1,2,3].map(i => {
+                              const x = 90 + i * 100;
+                              const angle = parseFloat(results.profileAngle);
+                              const depth = parseFloat(results.etchDepth) * 0.7;
+                              const topWidth = 35;
+                              const bottomWidth = topWidth - (depth * Math.tan((90 - angle) * Math.PI / 180) * 0.4);
+                              return (
+                                <g key={i}>
+                                  {/* Top surface */}
+                                  <rect x={x-25} y="70" width="85" height="30" fill="#888"/>
+                                  {/* Hole opening */}
+                                  <ellipse cx={x+17} cy="100" rx={topWidth/2} ry="8" fill="#222"/>
+                                  {/* Hole interior - tapered */}
+                                  <path d={`M${x},100 L${x+(topWidth-bottomWidth)/2},${100+depth*0.5} L${x+topWidth-(topWidth-bottomWidth)/2},${100+depth*0.5} L${x+topWidth},100`} fill="#111"/>
+                                  {/* Bottom */}
+                                  <ellipse cx={x+17} cy={100+depth*0.5} rx={bottomWidth/2} ry="5" fill="#333"/>
+                                  {/* Sidewall highlight */}
+                                  <path d={`M${x+2},100 Q${x+5},${100+depth*0.25} ${x+(topWidth-bottomWidth)/2+2},${100+depth*0.5}`} fill="none" stroke="#555" strokeWidth="1.5"/>
+                                </g>
+                              );
+                            })}
+                            <text x="250" y="270" fill="#00ff00" fontSize="10" textAnchor="middle" fontFamily="monospace">Contact Hole | CD: 80nm | AR: 5:1 | Angle: {results.profileAngle}°</text>
+                          </g>
+                        )}
+                      </svg>
                     </div>
-                    <div className="pt-2 border-t border-slate-700 space-y-1">
-                      <div className="text-xs text-slate-500">Min: <span className="text-cyan-400">{Math.min(...uniformityMap).toFixed(1)}%</span></div>
-                      <div className="text-xs text-slate-500">Max: <span className="text-cyan-400">{Math.max(...uniformityMap).toFixed(1)}%</span></div>
-                      <div className="text-xs text-slate-500">Range: <span className="text-yellow-400">{(Math.max(...uniformityMap) - Math.min(...uniformityMap)).toFixed(2)}%</span></div>
+                    <div className="grid grid-cols-3 gap-3 mt-3 text-xs">
+                      <div className="bg-slate-700/50 rounded p-2"><span className="text-slate-400">CD Loss:</span><span className="text-cyan-400 ml-2">{waferPattern === 'blank' ? 'N/A' : `${(5 + Math.random() * 3).toFixed(1)}nm`}</span></div>
+                      <div className="bg-slate-700/50 rounded p-2"><span className="text-slate-400">Depth:</span><span className="text-cyan-400 ml-2">{results.etchDepth}nm</span></div>
+                      <div className="bg-slate-700/50 rounded p-2"><span className="text-slate-400">Taper:</span><span className="text-cyan-400 ml-2">{(90 - parseFloat(results.profileAngle)).toFixed(1)}°</span></div>
                     </div>
                   </div>
-                </div>
-                <div className="mt-2 text-xs text-slate-500 text-center">
-                  💡 스케일을 높이면 미세한 차이도 크게 보입니다. 실제 Range: {(Math.max(...uniformityMap) - Math.min(...uniformityMap)).toFixed(2)}%
-                </div>
-              </div></>) : (<div className="flex flex-col items-center justify-center h-64 text-slate-500"><div className="text-4xl mb-3">📊</div><div>Run a process to see results</div></div>)}
+                )}
+              </>) : (<div className="flex flex-col items-center justify-center h-64 text-slate-500"><div className="text-4xl mb-3">📊</div><div>Run a process to see results</div></div>)}
             </div>)}
           </div>
         </div>
