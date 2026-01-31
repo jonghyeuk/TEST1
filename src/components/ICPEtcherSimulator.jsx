@@ -519,74 +519,135 @@ const ICPEtcherSimulator = () => {
                   const minDepth = (baseDepth * minUnif / 100).toFixed(1);
                   const maxDepth = (baseDepth * maxUnif / 100).toFixed(1);
                   const depthRange = (maxDepth - minDepth).toFixed(1);
+                  // Calculate etch rate (nm/min)
+                  const etchRate = parseFloat(results.etchRate);
+                  const minRate = (etchRate * minUnif / 100).toFixed(1);
+                  const maxRate = (etchRate * maxUnif / 100).toFixed(1);
                   return (
                   <div className="bg-slate-800 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm text-slate-300 font-medium">Etch Depth Uniformity Map (49-point)</div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-500 ml-2">Scale:</span>
-                        <input type="range" min="1" max="20" value={uniformityScale} onChange={(e) => setUniformityScale(Number(e.target.value))} className="w-20 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"/>
-                        <span className="text-xs text-cyan-400 font-mono w-8">{uniformityScale}x</span>
+                        <span className="text-xs text-slate-500">3D Scale:</span>
+                        <input type="range" min="1" max="20" value={uniformityScale} onChange={(e) => setUniformityScale(Number(e.target.value))} className="w-16 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer"/>
+                        <span className="text-xs text-cyan-400 font-mono w-6">{uniformityScale}x</span>
                       </div>
                     </div>
-                    <div className="flex justify-between text-xs mb-2 bg-slate-700/50 rounded px-3 py-1.5">
-                      <span className="text-slate-400">Min: <span className="text-cyan-400 font-mono">{minDepth}nm</span> <span className="text-slate-500">({minUnif.toFixed(1)}%)</span></span>
-                      <span className="text-slate-400">Max: <span className="text-green-400 font-mono">{maxDepth}nm</span> <span className="text-slate-500">({maxUnif.toFixed(1)}%)</span></span>
+                    <div className="flex justify-between text-xs mb-3 bg-slate-700/50 rounded px-3 py-1.5">
+                      <span className="text-slate-400">Min: <span className="text-cyan-400 font-mono">{minDepth}nm</span></span>
+                      <span className="text-slate-400">Max: <span className="text-green-400 font-mono">{maxDepth}nm</span></span>
                       <span className="text-slate-400">Range: <span className="text-yellow-400 font-mono">Δ{depthRange}nm</span></span>
-                      <span className="text-slate-400">Base: <span className="text-purple-400 font-mono">{baseDepth}nm</span></span>
+                      <span className="text-slate-400">Rate: <span className="text-purple-400 font-mono">{etchRate}nm/min</span></span>
                     </div>
-                    <svg viewBox="0 0 420 320" className="w-full" style={{height: '340px'}}>
-                      <g transform="translate(200, 220)">
-                        {uniformityMap.map((val, i) => {
-                          const row = Math.floor(i / 7);
-                          const col = i % 7;
-                          const baseVal = results ? parseFloat(results.uniformity) : 95;
-                          const diff = (val - baseVal) * uniformityScale;
-                          const height = Math.max(3, 30 + diff * 3);
-                          const actualDepth = (baseDepth * val / 100).toFixed(1);
-                          const isoX = (col - row) * 22;
-                          const isoY = (col + row) * 11 - 66;
-                          const hue = ((val - 85) / 15) * 120;
-                          const color = `hsl(${hue}, 70%, 50%)`;
-                          const darkColor = `hsl(${hue}, 70%, 35%)`;
-                          const lightColor = `hsl(${hue}, 70%, 60%)`;
-                          return (
-                            <g key={i} transform={`translate(${isoX}, ${isoY})`}>
-                              <polygon points={`0,${-height} 16,${-height-8} 32,${-height} 16,${-height+8}`} fill={lightColor} stroke={color} strokeWidth="0.5"/>
-                              <polygon points={`0,${-height} 16,${-height+8} 16,8 0,0`} fill={color} stroke={darkColor} strokeWidth="0.5"/>
-                              <polygon points={`16,${-height+8} 32,${-height} 32,0 16,8`} fill={darkColor} stroke={darkColor} strokeWidth="0.5"/>
-                              {row === 3 && col === 3 && <circle cx="16" cy={-height-8} r="3" fill="#fff" opacity="0.9"/>}
-                            </g>
-                          );
-                        })}
-                        <text x="-130" y="50" fill="#64748b" fontSize="9" textAnchor="middle">Edge</text>
-                        <text x="130" y="50" fill="#64748b" fontSize="9" textAnchor="middle">Edge</text>
-                        <text x="0" y="-95" fill="#22d3ee" fontSize="10" fontWeight="bold" textAnchor="middle">Center</text>
-                      </g>
-                      {/* Depth Scale Legend */}
-                      <g transform="translate(360, 30)">
-                        <text x="0" y="0" fill="#94a3b8" fontSize="9" fontWeight="bold">Depth</text>
-                        <text x="0" y="14" fill="#22d3ee" fontSize="10" fontWeight="bold" fontFamily="monospace">{maxDepth}nm</text>
-                        <text x="0" y="26" fill="#4ade80" fontSize="8">(max)</text>
-                        <rect x="0" y="34" width="16" height="120" rx="2" fill="url(#uniformityGradient)"/>
-                        {/* Scale ticks */}
-                        <line x1="18" y1="34" x2="24" y2="34" stroke="#64748b" strokeWidth="1"/>
-                        <line x1="18" y1="64" x2="24" y2="64" stroke="#64748b" strokeWidth="1"/>
-                        <line x1="18" y1="94" x2="24" y2="94" stroke="#64748b" strokeWidth="1"/>
-                        <line x1="18" y1="124" x2="24" y2="124" stroke="#64748b" strokeWidth="1"/>
-                        <line x1="18" y1="154" x2="24" y2="154" stroke="#64748b" strokeWidth="1"/>
-                        <text x="0" y="168" fill="#f87171" fontSize="10" fontWeight="bold" fontFamily="monospace">{minDepth}nm</text>
-                        <text x="0" y="180" fill="#f87171" fontSize="8">(min)</text>
-                        <defs>
-                          <linearGradient id="uniformityGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stopColor="hsl(120,70%,50%)"/>
-                            <stop offset="50%" stopColor="hsl(60,70%,50%)"/>
-                            <stop offset="100%" stopColor="hsl(0,70%,50%)"/>
-                          </linearGradient>
-                        </defs>
-                      </g>
-                    </svg>
-                    <div className="text-xs text-slate-500 text-center">💡 높이가 높을수록 더 많이 식각됨 (Scale 조절로 미세 차이 확대)</div>
+
+                    {/* 2D + 3D Side by Side */}
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* 2D Contour Map */}
+                      <div className="bg-slate-900 rounded-lg p-2">
+                        <div className="text-xs text-slate-400 text-center mb-1">2D Contour Map</div>
+                        <svg viewBox="0 0 200 200" className="w-full" style={{height: '200px'}}>
+                          <defs>
+                            <clipPath id="waferClip">
+                              <circle cx="100" cy="100" r="85"/>
+                            </clipPath>
+                            <radialGradient id="contourGrad" cx="50%" cy="50%" r="50%">
+                              {(() => {
+                                // Calculate center vs edge values to determine gradient direction
+                                const centerVal = uniformityMap[24]; // center point (row 3, col 3)
+                                const edgeVals = [uniformityMap[0], uniformityMap[6], uniformityMap[42], uniformityMap[48]];
+                                const avgEdge = edgeVals.reduce((a,b) => a+b, 0) / 4;
+                                const centerHigh = centerVal > avgEdge;
+                                const maxV = Math.max(...uniformityMap);
+                                const minV = Math.min(...uniformityMap);
+                                if (centerHigh) {
+                                  // Center high - white center, dark edge
+                                  return (<>
+                                    <stop offset="0%" stopColor="#fff"/>
+                                    <stop offset="30%" stopColor="#ddd"/>
+                                    <stop offset="50%" stopColor="#aaa"/>
+                                    <stop offset="70%" stopColor="#777"/>
+                                    <stop offset="100%" stopColor="#444"/>
+                                  </>);
+                                } else {
+                                  // Edge high - dark center, white edge
+                                  return (<>
+                                    <stop offset="0%" stopColor="#333"/>
+                                    <stop offset="30%" stopColor="#555"/>
+                                    <stop offset="50%" stopColor="#888"/>
+                                    <stop offset="70%" stopColor="#bbb"/>
+                                    <stop offset="100%" stopColor="#eee"/>
+                                  </>);
+                                }
+                              })()}
+                            </radialGradient>
+                          </defs>
+                          {/* Wafer circle with gradient */}
+                          <circle cx="100" cy="100" r="85" fill="url(#contourGrad)" stroke="#666" strokeWidth="1"/>
+                          {/* Contour rings */}
+                          {[20, 35, 50, 65, 80].map((r, i) => (
+                            <circle key={i} cx="100" cy="100" r={r} fill="none" stroke="#666" strokeWidth="0.5" opacity="0.5"/>
+                          ))}
+                          {/* Notch */}
+                          <path d="M100,185 L95,195 L105,195 Z" fill="#333"/>
+                          {/* Center marker */}
+                          <circle cx="100" cy="100" r="3" fill="none" stroke="#0ff" strokeWidth="1"/>
+                          <line x1="95" y1="100" x2="105" y2="100" stroke="#0ff" strokeWidth="0.5"/>
+                          <line x1="100" y1="95" x2="100" y2="105" stroke="#0ff" strokeWidth="0.5"/>
+                        </svg>
+                        {/* Grayscale scale bar */}
+                        <div className="flex items-center justify-center gap-2 mt-1">
+                          <div className="w-24 h-3 rounded" style={{background: 'linear-gradient(to right, #333, #fff)'}}/>
+                          <div className="text-xs text-slate-400">
+                            <span className="text-slate-500">{minRate}</span>
+                            <span className="mx-1">-</span>
+                            <span className="text-white">{maxRate}</span>
+                            <span className="text-slate-500 ml-1">nm/min</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 3D Isometric View */}
+                      <div className="bg-slate-900 rounded-lg p-2">
+                        <div className="text-xs text-slate-400 text-center mb-1">3D Depth View</div>
+                        <svg viewBox="0 0 240 200" className="w-full" style={{height: '200px'}}>
+                          <g transform="translate(120, 140)">
+                            {uniformityMap.map((val, i) => {
+                              const row = Math.floor(i / 7);
+                              const col = i % 7;
+                              const baseVal = results ? parseFloat(results.uniformity) : 95;
+                              const diff = (val - baseVal) * uniformityScale;
+                              const height = Math.max(2, 20 + diff * 2);
+                              const isoX = (col - row) * 14;
+                              const isoY = (col + row) * 7 - 42;
+                              const gray = Math.round(((val - minUnif) / (maxUnif - minUnif)) * 200 + 55);
+                              const color = `rgb(${gray},${gray},${gray})`;
+                              const darkColor = `rgb(${Math.max(0,gray-40)},${Math.max(0,gray-40)},${Math.max(0,gray-40)})`;
+                              const lightColor = `rgb(${Math.min(255,gray+30)},${Math.min(255,gray+30)},${Math.min(255,gray+30)})`;
+                              return (
+                                <g key={i} transform={`translate(${isoX}, ${isoY})`}>
+                                  <polygon points={`0,${-height} 10,${-height-5} 20,${-height} 10,${-height+5}`} fill={lightColor} stroke={color} strokeWidth="0.3"/>
+                                  <polygon points={`0,${-height} 10,${-height+5} 10,5 0,0`} fill={color} stroke={darkColor} strokeWidth="0.3"/>
+                                  <polygon points={`10,${-height+5} 20,${-height} 20,0 10,5`} fill={darkColor} stroke={darkColor} strokeWidth="0.3"/>
+                                </g>
+                              );
+                            })}
+                          </g>
+                          {/* Scale indicator */}
+                          <text x="120" y="190" fill="#64748b" fontSize="8" textAnchor="middle">↑ Height = Etch Depth</text>
+                        </svg>
+                        {/* Depth scale bar */}
+                        <div className="flex items-center justify-center gap-2 mt-1">
+                          <div className="w-24 h-3 rounded" style={{background: 'linear-gradient(to right, #333, #fff)'}}/>
+                          <div className="text-xs text-slate-400">
+                            <span className="text-slate-500">{minDepth}</span>
+                            <span className="mx-1">-</span>
+                            <span className="text-white">{maxDepth}</span>
+                            <span className="text-slate-500 ml-1">nm</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-slate-500 text-center mt-2">💡 밝을수록 식각량이 많음 (Center-high 또는 Edge-high 패턴)</div>
                   </div>
                 );})()}
 
