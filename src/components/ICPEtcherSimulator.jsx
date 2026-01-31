@@ -708,66 +708,79 @@ const ICPEtcherSimulator = () => {
 
                     {/* 2D + 3D Side by Side */}
                     <div className="grid grid-cols-2 gap-3">
-                      {/* 2D Contour Map */}
+                      {/* 2D Contour Map with actual contour bands */}
                       <div className="bg-slate-900 rounded-lg p-2">
                         <div className="text-xs text-slate-400 text-center mb-1">2D Contour Map</div>
-                        <svg viewBox="0 0 200 200" className="w-full" style={{height: '200px'}}>
+                        <svg viewBox="0 0 220 220" className="w-full" style={{height: '220px'}}>
                           <defs>
                             <clipPath id="waferClip">
                               <circle cx="100" cy="100" r="85"/>
                             </clipPath>
-                            <radialGradient id="contourGrad" cx="50%" cy="50%" r="50%">
-                              {(() => {
-                                // Calculate center vs edge values to determine gradient direction
-                                const centerVal = uniformityMap[24]; // center point (row 3, col 3)
-                                const edgeVals = [uniformityMap[0], uniformityMap[6], uniformityMap[42], uniformityMap[48]];
-                                const avgEdge = edgeVals.reduce((a,b) => a+b, 0) / 4;
-                                const centerHigh = centerVal > avgEdge;
-                                const maxV = Math.max(...uniformityMap);
-                                const minV = Math.min(...uniformityMap);
-                                if (centerHigh) {
-                                  // Center high - white center, dark edge
-                                  return (<>
-                                    <stop offset="0%" stopColor="#fff"/>
-                                    <stop offset="30%" stopColor="#ddd"/>
-                                    <stop offset="50%" stopColor="#aaa"/>
-                                    <stop offset="70%" stopColor="#777"/>
-                                    <stop offset="100%" stopColor="#444"/>
-                                  </>);
-                                } else {
-                                  // Edge high - dark center, white edge
-                                  return (<>
-                                    <stop offset="0%" stopColor="#333"/>
-                                    <stop offset="30%" stopColor="#555"/>
-                                    <stop offset="50%" stopColor="#888"/>
-                                    <stop offset="70%" stopColor="#bbb"/>
-                                    <stop offset="100%" stopColor="#eee"/>
-                                  </>);
-                                }
-                              })()}
-                            </radialGradient>
                           </defs>
-                          {/* Wafer circle with gradient */}
-                          <circle cx="100" cy="100" r="85" fill="url(#contourGrad)" stroke="#666" strokeWidth="1"/>
-                          {/* Contour rings */}
-                          {[20, 35, 50, 65, 80].map((r, i) => (
-                            <circle key={i} cx="100" cy="100" r={r} fill="none" stroke="#666" strokeWidth="0.5" opacity="0.5"/>
-                          ))}
+                          {/* Create contour bands based on data */}
+                          {(() => {
+                            const centerVal = uniformityMap[24];
+                            const edgeVals = [uniformityMap[0], uniformityMap[6], uniformityMap[42], uniformityMap[48]];
+                            const avgEdge = edgeVals.reduce((a,b) => a+b, 0) / 4;
+                            const centerHigh = centerVal > avgEdge;
+                            const minV = Math.min(...uniformityMap);
+                            const maxV = Math.max(...uniformityMap);
+                            const range = maxV - minV;
+                            const numBands = 8;
+                            const bandSize = range / numBands;
+
+                            // Create contour bands from outside to inside
+                            const bands = [];
+                            for (let i = 0; i < numBands; i++) {
+                              const bandVal = centerHigh
+                                ? minV + (i + 0.5) * bandSize  // outer = low, inner = high
+                                : maxV - (i + 0.5) * bandSize; // outer = high, inner = low
+                              const normalizedVal = (bandVal - minV) / range;
+                              const gray = Math.round(normalizedVal * 200 + 40);
+                              const radius = 85 - (i * 85 / numBands);
+                              // Add slight irregularity to contours
+                              const wobble = Array(12).fill(0).map((_, j) => {
+                                const angle = (j / 12) * Math.PI * 2;
+                                const noise = (Math.sin(angle * 3 + i) * 0.1 + Math.cos(angle * 5 - i) * 0.05) * radius;
+                                return {
+                                  x: 100 + (radius + noise) * Math.cos(angle),
+                                  y: 100 + (radius + noise) * Math.sin(angle)
+                                };
+                              });
+                              const pathD = wobble.map((p, j) =>
+                                (j === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)
+                              ).join(' ') + ' Z';
+
+                              const rateVal = (etchRate * bandVal / 100).toFixed(0);
+                              bands.push({ pathD, gray, rateVal, radius, i });
+                            }
+
+                            return bands.map((band, idx) => (
+                              <g key={idx}>
+                                <path
+                                  d={band.pathD}
+                                  fill={`rgb(${band.gray},${band.gray},${band.gray})`}
+                                  stroke={`rgb(${Math.max(0, band.gray-30)},${Math.max(0, band.gray-30)},${Math.max(0, band.gray-30)})`}
+                                  strokeWidth="1"
+                                  clipPath="url(#waferClip)"
+                                />
+                              </g>
+                            ));
+                          })()}
+                          {/* Wafer outline */}
+                          <circle cx="100" cy="100" r="85" fill="none" stroke="#555" strokeWidth="2"/>
                           {/* Notch */}
-                          <path d="M100,185 L95,195 L105,195 Z" fill="#333"/>
+                          <path d="M100,185 L96,192 L104,192 Z" fill="#333" stroke="#555" strokeWidth="1"/>
                           {/* Center marker */}
-                          <circle cx="100" cy="100" r="3" fill="none" stroke="#0ff" strokeWidth="1"/>
-                          <line x1="95" y1="100" x2="105" y2="100" stroke="#0ff" strokeWidth="0.5"/>
-                          <line x1="100" y1="95" x2="100" y2="105" stroke="#0ff" strokeWidth="0.5"/>
+                          <circle cx="100" cy="100" r="2" fill="#0ff"/>
                         </svg>
-                        {/* Grayscale scale bar */}
-                        <div className="flex items-center justify-center gap-2 mt-1">
-                          <div className="w-24 h-3 rounded" style={{background: 'linear-gradient(to right, #333, #fff)'}}/>
-                          <div className="text-xs text-slate-400">
-                            <span className="text-slate-500">{minRate}</span>
-                            <span className="mx-1">-</span>
-                            <span className="text-white">{maxRate}</span>
-                            <span className="text-slate-500 ml-1">nm/min</span>
+                        {/* Vertical scale bar with values */}
+                        <div className="flex justify-center gap-3 mt-1">
+                          <div className="flex flex-col items-center">
+                            <div className="text-[9px] text-white font-mono">{maxRate}</div>
+                            <div className="w-4 h-20 rounded-sm" style={{background: 'linear-gradient(to bottom, #f0f0f0, #888, #282828)'}}/>
+                            <div className="text-[9px] text-slate-500 font-mono">{minRate}</div>
+                            <div className="text-[8px] text-slate-500">nm/min</div>
                           </div>
                         </div>
                       </div>
