@@ -20,16 +20,111 @@ const ICPEtcherSimulator = () => {
   const [plasmaColor, setPlasmaColor] = useState('#8b5cf6');
   const [interlockStatus, setInterlockStatus] = useState({ checked: false, checking: false, passed: false, items: { power: false, vacuum: false, door: false, wafer: false, temp: false, pressure: false, gasLine: false, rf: false } });
   const [uniformityScale, setUniformityScale] = useState(1);
-  const [waferPattern, setWaferPattern] = useState('blank');
+  const [waferPattern, setWaferPattern] = useState('siOnOxide');
   const [resultView, setResultView] = useState('summary');
   const [paused, setPaused] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const processTimerRef = useRef(null);
 
-  // Standard wafer patterns
+  // Detailed wafer patterns for selectivity experiments
   const waferPatterns = {
-    blank: { name: 'Blank Wafer', desc: 'No pattern', cd: 0, pitch: 0, ar: 0 },
-    lineSpace: { name: 'Line/Space', desc: '100nm L/S, 1:1', cd: 100, pitch: 200, ar: 2.0 },
-    contactHole: { name: 'Contact Hole', desc: '80nm dia, AR 5:1', cd: 80, pitch: 160, ar: 5.0 }
+    siOnOxide: {
+      name: 'Si/SiO₂ Stack',
+      desc: 'Poly-Si(500nm) on SiO₂(100nm) - Gate Etch',
+      target: 'Si',
+      mask: 'PR',
+      stop: 'SiO2',
+      stack: [
+        { material: 'PR', thickness: 300, color: '#d946ef' },
+        { material: 'Si', thickness: 500, color: '#6366f1' },
+        { material: 'SiO2', thickness: 100, color: '#06b6d4' }
+      ],
+      goalSelectivity: 'Si:SiO₂ > 10:1',
+      chemistry: 'Cl₂/HBr + O₂',
+      cd: 100, pitch: 200, ar: 5.0,
+      tips: 'HBr 비율↑ → 선택도↑, Bias↓ → 선택도↑'
+    },
+    oxideOnSi: {
+      name: 'SiO₂/Si Stack',
+      desc: 'SiO₂(300nm) on Si - Contact Etch',
+      target: 'SiO2',
+      mask: 'PR',
+      stop: 'Si',
+      stack: [
+        { material: 'PR', thickness: 400, color: '#d946ef' },
+        { material: 'SiO2', thickness: 300, color: '#06b6d4' },
+        { material: 'Si', thickness: 100, color: '#6366f1' }
+      ],
+      goalSelectivity: 'SiO₂:Si > 10:1',
+      chemistry: 'CF₄/CHF₃ + O₂',
+      cd: 80, pitch: 160, ar: 3.75,
+      tips: 'CHF₃ 비율↑ → 선택도↑ (polymer), O₂↑ → 선택도↓'
+    },
+    nitrideOnOxide: {
+      name: 'Si₃N₄/SiO₂ Stack',
+      desc: 'Si₃N₄(200nm) on SiO₂(50nm) - Spacer Etch',
+      target: 'Si3N4',
+      mask: 'PR',
+      stop: 'SiO2',
+      stack: [
+        { material: 'PR', thickness: 300, color: '#d946ef' },
+        { material: 'Si3N4', thickness: 200, color: '#22c55e' },
+        { material: 'SiO2', thickness: 50, color: '#06b6d4' }
+      ],
+      goalSelectivity: 'Si₃N₄:SiO₂ > 5:1',
+      chemistry: 'CHF₃/O₂ + Ar',
+      cd: 120, pitch: 240, ar: 1.67,
+      tips: 'O₂ 비율 조절이 핵심, 압력↑ → 선택도↑'
+    }
+  };
+
+  // Optimized recipes for selectivity experiments
+  const selectivityRecipes = {
+    siOnOxide: {
+      highSelectivity: [
+        { name: 'Stabilize', time: 10, pressure: 50, sourcePower: 0, biasPower: 0, cl2: 0, hbr: 0, cf4: 0, chf3: 0, o2: 0, ar: 100, n2: 0 },
+        { name: 'Strike', time: 5, pressure: 30, sourcePower: 400, biasPower: 0, cl2: 10, hbr: 30, cf4: 0, chf3: 0, o2: 0, ar: 50, n2: 0 },
+        { name: 'Main Etch', time: 60, pressure: 40, sourcePower: 600, biasPower: 50, cl2: 20, hbr: 80, cf4: 0, chf3: 0, o2: 5, ar: 50, n2: 0 },
+        { name: 'Over Etch', time: 15, pressure: 50, sourcePower: 400, biasPower: 30, cl2: 10, hbr: 60, cf4: 0, chf3: 0, o2: 3, ar: 50, n2: 0 },
+        { name: 'Purge', time: 10, pressure: 100, sourcePower: 0, biasPower: 0, cl2: 0, hbr: 0, cf4: 0, chf3: 0, o2: 0, ar: 0, n2: 200 }
+      ],
+      lowSelectivity: [
+        { name: 'Stabilize', time: 10, pressure: 50, sourcePower: 0, biasPower: 0, cl2: 0, hbr: 0, cf4: 0, chf3: 0, o2: 0, ar: 100, n2: 0 },
+        { name: 'Strike', time: 5, pressure: 20, sourcePower: 500, biasPower: 0, cl2: 50, hbr: 10, cf4: 0, chf3: 0, o2: 0, ar: 50, n2: 0 },
+        { name: 'Main Etch', time: 60, pressure: 10, sourcePower: 1000, biasPower: 200, cl2: 100, hbr: 0, cf4: 0, chf3: 0, o2: 0, ar: 50, n2: 0 },
+        { name: 'Purge', time: 10, pressure: 100, sourcePower: 0, biasPower: 0, cl2: 0, hbr: 0, cf4: 0, chf3: 0, o2: 0, ar: 0, n2: 200 }
+      ]
+    },
+    oxideOnSi: {
+      highSelectivity: [
+        { name: 'Stabilize', time: 10, pressure: 40, sourcePower: 0, biasPower: 0, cl2: 0, hbr: 0, cf4: 0, chf3: 0, o2: 0, ar: 100, n2: 0 },
+        { name: 'Strike', time: 5, pressure: 30, sourcePower: 400, biasPower: 0, cl2: 0, hbr: 0, cf4: 10, chf3: 40, o2: 0, ar: 50, n2: 0 },
+        { name: 'Main Etch', time: 90, pressure: 50, sourcePower: 800, biasPower: 100, cl2: 0, hbr: 0, cf4: 10, chf3: 80, o2: 5, ar: 30, n2: 0 },
+        { name: 'Over Etch', time: 20, pressure: 60, sourcePower: 600, biasPower: 50, cl2: 0, hbr: 0, cf4: 5, chf3: 60, o2: 3, ar: 30, n2: 0 },
+        { name: 'Purge', time: 10, pressure: 100, sourcePower: 0, biasPower: 0, cl2: 0, hbr: 0, cf4: 0, chf3: 0, o2: 0, ar: 0, n2: 200 }
+      ],
+      lowSelectivity: [
+        { name: 'Stabilize', time: 10, pressure: 40, sourcePower: 0, biasPower: 0, cl2: 0, hbr: 0, cf4: 0, chf3: 0, o2: 0, ar: 100, n2: 0 },
+        { name: 'Strike', time: 5, pressure: 20, sourcePower: 500, biasPower: 0, cl2: 0, hbr: 0, cf4: 50, chf3: 10, o2: 10, ar: 50, n2: 0 },
+        { name: 'Main Etch', time: 90, pressure: 15, sourcePower: 1200, biasPower: 300, cl2: 0, hbr: 0, cf4: 80, chf3: 0, o2: 20, ar: 30, n2: 0 },
+        { name: 'Purge', time: 10, pressure: 100, sourcePower: 0, biasPower: 0, cl2: 0, hbr: 0, cf4: 0, chf3: 0, o2: 0, ar: 0, n2: 200 }
+      ]
+    },
+    nitrideOnOxide: {
+      highSelectivity: [
+        { name: 'Stabilize', time: 10, pressure: 30, sourcePower: 0, biasPower: 0, cl2: 0, hbr: 0, cf4: 0, chf3: 0, o2: 0, ar: 100, n2: 0 },
+        { name: 'Strike', time: 5, pressure: 30, sourcePower: 300, biasPower: 0, cl2: 0, hbr: 0, cf4: 0, chf3: 50, o2: 20, ar: 50, n2: 0 },
+        { name: 'Main Etch', time: 75, pressure: 60, sourcePower: 500, biasPower: 80, cl2: 0, hbr: 0, cf4: 0, chf3: 70, o2: 30, ar: 30, n2: 0 },
+        { name: 'Over Etch', time: 15, pressure: 70, sourcePower: 400, biasPower: 50, cl2: 0, hbr: 0, cf4: 0, chf3: 60, o2: 25, ar: 30, n2: 0 },
+        { name: 'Purge', time: 10, pressure: 100, sourcePower: 0, biasPower: 0, cl2: 0, hbr: 0, cf4: 0, chf3: 0, o2: 0, ar: 0, n2: 200 }
+      ],
+      lowSelectivity: [
+        { name: 'Stabilize', time: 10, pressure: 30, sourcePower: 0, biasPower: 0, cl2: 0, hbr: 0, cf4: 0, chf3: 0, o2: 0, ar: 100, n2: 0 },
+        { name: 'Strike', time: 5, pressure: 15, sourcePower: 400, biasPower: 0, cl2: 0, hbr: 0, cf4: 20, chf3: 30, o2: 5, ar: 50, n2: 0 },
+        { name: 'Main Etch', time: 75, pressure: 10, sourcePower: 900, biasPower: 200, cl2: 0, hbr: 0, cf4: 40, chf3: 20, o2: 5, ar: 30, n2: 0 },
+        { name: 'Purge', time: 10, pressure: 100, sourcePower: 0, biasPower: 0, cl2: 0, hbr: 0, cf4: 0, chf3: 0, o2: 0, ar: 0, n2: 200 }
+      ]
+    }
   };
   const stateRef = useRef({ idx: 0, stepE: 0, totalE: 0 });
   const logRef = useRef(null);
@@ -177,68 +272,100 @@ const ICPEtcherSimulator = () => {
 
   const calcResults = () => {
     const ms = recipeSteps.find(s => s.name.includes('Main') || s.name.includes('Ashing')); if (!ms) return;
+    const wp = waferPatterns[waferPattern];
 
-    const totalGasFlow = ms.cl2 + ms.hbr + ms.cf4 + ms.chf3 + ms.o2 + ms.ar + (ms.n2 || 0) + 1;
     const ionFlux = Math.sqrt(ms.sourcePower / 100) * Math.sqrt(100 / (ms.pressure + 1));
     const ionEnergy = 20 + (ms.biasPower / (ms.pressure + 1)) * 5;
     const dissociationRate = Math.min(0.9, (ms.sourcePower / 500) * (50 / (ms.pressure + 10)));
 
-    let etchRate = 0, selectivity = 1, ionContrib = 0, radContrib = 0;
+    let targetEtchRate = 0, stopEtchRate = 0, selectivity = 1, ionContrib = 0, radContrib = 0;
     let analysisText = '';
 
-    if (targetMaterial === 'Si') {
-      const clRadical = ms.cl2 * dissociationRate * 2;
-      const brRadical = ms.hbr * dissociationRate;
-      radContrib = (clRadical * 1.5 + brRadical * 1.2) * 0.8;
-      ionContrib = ionFlux * Math.sqrt(ionEnergy) * 0.3;
-      etchRate = radContrib + ionContrib + (radContrib * ionContrib * 0.01);
-      const prEtchRate = ms.o2 * 0.5 + ionEnergy * 0.1 + clRadical * 0.05;
-      selectivity = etchRate / (prEtchRate + 1);
-      selectivity *= (1 + (ms.hbr / (ms.cl2 + ms.hbr + 1)) * 2);
-      analysisText = `Cl* 라디칼: ${clRadical.toFixed(1)}, Br* 라디칼: ${brRadical.toFixed(1)}, 이온에너지: ${ionEnergy.toFixed(0)}eV`;
+    // Calculate etch rates based on wafer pattern (target and stop layer)
+    const calcMaterialRate = (material) => {
+      let rate = 0, ionC = 0, radC = 0;
+
+      if (material === 'Si') {
+        const clRadical = ms.cl2 * dissociationRate * 2;
+        const brRadical = ms.hbr * dissociationRate;
+        radC = (clRadical * 1.5 + brRadical * 1.2) * 0.8;
+        ionC = ionFlux * Math.sqrt(ionEnergy) * 0.3;
+        rate = radC + ionC + (radC * ionC * 0.01);
+        // HBr increases Si etch rate selectivity over oxide
+        rate *= (1 + (ms.hbr / (ms.cl2 + ms.hbr + 1)) * 0.5);
+      }
+      else if (material === 'SiO2') {
+        const fRadical = (ms.cf4 * 4 + ms.chf3 * 3) * dissociationRate * 0.3;
+        const cfxPolymer = ms.chf3 * dissociationRate * 0.5;
+        const ionEnhancement = Math.max(0, (ionEnergy - 30) / 20);
+        radC = fRadical * 0.3;
+        ionC = ionFlux * ionEnhancement * fRadical * 0.05;
+        rate = radC + ionC;
+        // O2 removes polymer, increases etch rate
+        rate *= (1 + ms.o2 * 0.03);
+        // Polymer protection reduces rate
+        rate *= (1 - cfxPolymer * 0.01);
+      }
+      else if (material === 'Si3N4') {
+        const fRadical = (ms.cf4 * 4 + ms.chf3 * 3) * dissociationRate * 0.3;
+        const hRadical = ms.chf3 * dissociationRate * 0.5;
+        radC = fRadical * 0.6 + hRadical * fRadical * 0.02;
+        ionC = ionFlux * Math.sqrt(ionEnergy) * 0.2;
+        rate = radC + ionC;
+        // O2 enhances nitride etch
+        rate *= (1 + ms.o2 * 0.04);
+      }
+      else if (material === 'PR') {
+        const oRadical = ms.o2 * dissociationRate * 2;
+        radC = oRadical * 1.5;
+        ionC = ionFlux * Math.sqrt(ionEnergy) * 0.1;
+        rate = radC + ionC;
+        rate *= (1 + ms.pressure / 200);
+      }
+
+      return { rate: rate * 3, ionC: ionC * 3, radC: radC * 3 };
+    };
+
+    // Calculate target and stop layer etch rates
+    const targetResult = calcMaterialRate(wp.target);
+    targetEtchRate = targetResult.rate;
+    ionContrib = targetResult.ionC;
+    radContrib = targetResult.radC;
+
+    const stopResult = calcMaterialRate(wp.stop);
+    stopEtchRate = stopResult.rate;
+
+    // Calculate selectivity with physical meaning
+    selectivity = targetEtchRate / (stopEtchRate + 0.1);
+
+    // Pressure effect on selectivity (higher pressure generally increases selectivity)
+    selectivity *= (1 + (ms.pressure - 20) * 0.01);
+
+    // Bias effect on selectivity (higher bias decreases selectivity due to physical sputtering)
+    selectivity *= (1 - ms.biasPower * 0.001);
+
+    // Generate analysis text based on wafer pattern
+    if (waferPattern === 'siOnOxide') {
+      const hbrRatio = ms.hbr / (ms.cl2 + ms.hbr + 1) * 100;
+      analysisText = `Si:SiO₂ 선택도=${selectivity.toFixed(1)}:1 | HBr비율: ${hbrRatio.toFixed(0)}% | Bias: ${ms.biasPower}W → ${ms.biasPower > 100 ? '선택도↓' : '선택도↑'}`;
     }
-    else if (targetMaterial === 'SiO2') {
-      const fRadical = (ms.cf4 * 4 + ms.chf3 * 3) * dissociationRate * 0.3;
+    else if (waferPattern === 'oxideOnSi') {
+      const chf3Ratio = ms.chf3 / (ms.cf4 + ms.chf3 + 1) * 100;
       const cfxPolymer = ms.chf3 * dissociationRate * 0.5;
-      const ionEnhancement = Math.max(0, (ionEnergy - 30) / 20);
-      radContrib = fRadical * 0.3;
-      ionContrib = ionFlux * ionEnhancement * fRadical * 0.05;
-      etchRate = radContrib + ionContrib;
-      etchRate *= (1 + ms.o2 * 0.02);
-      const siEtchRate = fRadical * 0.5 - cfxPolymer * 0.3;
-      selectivity = etchRate / (Math.max(1, siEtchRate));
-      selectivity *= (1 + cfxPolymer * 0.1);
-      analysisText = `F* 라디칼: ${fRadical.toFixed(1)}, CFx polymer: ${cfxPolymer.toFixed(1)}, 이온강화: ${ionEnhancement.toFixed(2)}`;
+      analysisText = `SiO₂:Si 선택도=${selectivity.toFixed(1)}:1 | CHF₃비율: ${chf3Ratio.toFixed(0)}% | Polymer: ${cfxPolymer.toFixed(1)} → ${cfxPolymer > 10 ? '보호막↑' : '보호막↓'}`;
     }
-    else if (targetMaterial === 'Si3N4') {
-      const fRadical = (ms.cf4 * 4 + ms.chf3 * 3) * dissociationRate * 0.3;
-      const hRadical = ms.chf3 * dissociationRate * 0.5;
-      radContrib = fRadical * 0.6 + hRadical * fRadical * 0.02;
-      ionContrib = ionFlux * Math.sqrt(ionEnergy) * 0.2;
-      etchRate = radContrib + ionContrib;
-      etchRate *= (1 + ms.o2 * 0.03);
-      const sio2EtchRate = fRadical * 0.3 * (1 + ms.o2 * 0.05);
-      selectivity = etchRate / (sio2EtchRate + 1);
-      analysisText = `F* 라디칼: ${fRadical.toFixed(1)}, H* 라디칼: ${hRadical.toFixed(1)}, 해리율: ${(dissociationRate*100).toFixed(0)}%`;
-    }
-    else if (targetMaterial === 'PR') {
-      const oRadical = ms.o2 * dissociationRate * 2;
-      radContrib = oRadical * 1.5;
-      ionContrib = ionFlux * Math.sqrt(ionEnergy) * 0.1;
-      etchRate = radContrib + ionContrib;
-      etchRate *= (1 + ms.pressure / 200);
-      selectivity = 100;
-      analysisText = `O* 라디칼: ${oRadical.toFixed(1)}, 압력효과: ${(1 + ms.pressure/200).toFixed(2)}x`;
+    else if (waferPattern === 'nitrideOnOxide') {
+      const o2Effect = ms.o2 / (ms.chf3 + ms.o2 + 1) * 100;
+      analysisText = `Si₃N₄:SiO₂ 선택도=${selectivity.toFixed(1)}:1 | O₂비율: ${o2Effect.toFixed(0)}% | 압력: ${ms.pressure}mT → ${ms.pressure > 40 ? '선택도↑' : '선택도↓'}`;
     }
 
-    etchRate = etchRate * 3;
     const uni = 95 - Math.abs(ms.pressure - 30) * 0.1 - Math.abs(ms.sourcePower - 600) * 0.005;
     const pa = 85 + (ms.biasPower / 200) * 5 - (ms.pressure / 100) * 3;
-    const ed = etchRate * (ms.time / 60);
+    const ed = targetEtchRate * (ms.time / 60);
 
     setResults({
-      etchRate: Math.max(0, etchRate).toFixed(1),
-      selectivity: Math.max(1, Math.min(100, selectivity)).toFixed(1),
+      etchRate: Math.max(0, targetEtchRate).toFixed(1),
+      selectivity: Math.max(0.5, Math.min(50, selectivity)).toFixed(1),
       uniformity: Math.min(99, Math.max(80, uni)).toFixed(1),
       profileAngle: Math.min(90, Math.max(75, pa)).toFixed(1),
       etchDepth: ed.toFixed(0),
@@ -246,8 +373,12 @@ const ICPEtcherSimulator = () => {
       ionFlux: ionFlux.toFixed(2),
       ionEnergy: ionEnergy.toFixed(1),
       dissociationRate: (dissociationRate * 100).toFixed(0),
-      ionContrib: (ionContrib * 3).toFixed(1),
-      radContrib: (radContrib * 3).toFixed(1),
+      ionContrib: ionContrib.toFixed(1),
+      radContrib: radContrib.toFixed(1),
+      targetMaterial: wp.target,
+      stopMaterial: wp.stop,
+      targetRate: targetEtchRate.toFixed(1),
+      stopRate: stopEtchRate.toFixed(1),
       analysisText
     });
     const map = []; for (let i = 0; i < 49; i++) { const r = Math.floor(i / 7), c = i % 7, d = Math.sqrt(Math.pow(r - 3, 2) + Math.pow(c - 3, 2)), v = uni - d * (Math.random() * 0.5 + 0.3); map.push(Math.min(100, Math.max(85, v))); } setUniformityMap(map);
@@ -329,6 +460,7 @@ const ICPEtcherSimulator = () => {
           <div className="text-xl font-bold text-cyan-400">⚡ ICP Etcher</div>
           <div className="text-sm text-slate-400">Virtual Lab v2.0</div>
           <div className="text-xs bg-yellow-600 px-2 py-0.5 rounded">×{SPEED} Speed</div>
+          <button onClick={() => setShowGuide(true)} className="text-xs bg-blue-600 hover:bg-blue-500 px-2 py-0.5 rounded flex items-center gap-1">📖 Guide</button>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-xs"><div className={`w-2 h-2 rounded-full ${equipmentState.power ? 'bg-green-500' : 'bg-red-500'}`}/><span>PWR</span></div>
@@ -400,6 +532,32 @@ const ICPEtcherSimulator = () => {
                 ))}
               </select>
               <div className="text-xs text-slate-500 mt-1">{waferPatterns[waferPattern].desc}</div>
+              {/* Film Stack Visualization */}
+              <div className="mt-2 flex items-center gap-1">
+                {waferPatterns[waferPattern].stack.map((layer, i) => (
+                  <div key={i} className="flex-1 text-center">
+                    <div className="h-4 rounded-sm text-[8px] text-white flex items-center justify-center" style={{backgroundColor: layer.color}}>
+                      {layer.material}
+                    </div>
+                    <div className="text-[8px] text-slate-500">{layer.thickness}nm</div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-1 text-[10px] text-cyan-400">🎯 {waferPatterns[waferPattern].goalSelectivity}</div>
+              <div className="text-[10px] text-slate-500">💡 {waferPatterns[waferPattern].tips}</div>
+            </div>
+            {/* Recipe Preset Buttons */}
+            <div className="flex gap-1">
+              <button
+                onClick={() => { setRecipeSteps([...selectivityRecipes[waferPattern].highSelectivity]); addLog(`High selectivity recipe loaded for ${waferPatterns[waferPattern].name}`, 'info'); }}
+                disabled={equipmentState.processing}
+                className="flex-1 py-1 bg-green-700 hover:bg-green-600 rounded text-[10px] disabled:opacity-50"
+              >📗 High Sel.</button>
+              <button
+                onClick={() => { setRecipeSteps([...selectivityRecipes[waferPattern].lowSelectivity]); addLog(`Low selectivity recipe loaded for ${waferPatterns[waferPattern].name}`, 'info'); }}
+                disabled={equipmentState.processing}
+                className="flex-1 py-1 bg-orange-700 hover:bg-orange-600 rounded text-[10px] disabled:opacity-50"
+              >📙 Low Sel.</button>
             </div>
             <button onClick={toggleWaferLoad} disabled={!equipmentState.power || equipmentState.processing} className={`w-full py-2 rounded font-bold text-sm transition-all ${equipmentState.waferLoaded ? 'bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-900/50' : 'bg-slate-600 hover:bg-slate-500'} disabled:opacity-50`}>{equipmentState.waferLoaded ? '📀 WAFER LOADED' : '○ LOAD WAFER'}</button>
           </div>
@@ -470,8 +628,16 @@ const ICPEtcherSimulator = () => {
                 {/* Summary View */}
                 {resultView === 'summary' && (<>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-gradient-to-br from-green-900/50 to-green-800/30 rounded-lg p-3 border border-green-700"><div className="text-xs text-green-400">Etch Rate</div><div className="text-2xl font-bold text-green-300">{results.etchRate}</div><div className="text-xs text-green-500">nm/min</div></div>
-                    <div className="bg-gradient-to-br from-blue-900/50 to-blue-800/30 rounded-lg p-3 border border-blue-700"><div className="text-xs text-blue-400">Selectivity</div><div className="text-2xl font-bold text-blue-300">{results.selectivity}:1</div><div className="text-xs text-blue-500">vs underlayer</div></div>
+                    <div className="bg-gradient-to-br from-green-900/50 to-green-800/30 rounded-lg p-3 border border-green-700">
+                      <div className="text-xs text-green-400">{results.targetMaterial} Etch Rate</div>
+                      <div className="text-2xl font-bold text-green-300">{results.etchRate}</div>
+                      <div className="text-xs text-green-500">nm/min</div>
+                    </div>
+                    <div className="bg-gradient-to-br from-yellow-900/50 to-yellow-800/30 rounded-lg p-3 border border-yellow-700">
+                      <div className="text-xs text-yellow-400">Selectivity ({results.targetMaterial}:{results.stopMaterial})</div>
+                      <div className="text-2xl font-bold text-yellow-300">{results.selectivity}:1</div>
+                      <div className="text-xs text-yellow-500">{results.stopMaterial} rate: {results.stopRate} nm/min</div>
+                    </div>
                     <div className="bg-gradient-to-br from-purple-900/50 to-purple-800/30 rounded-lg p-3 border border-purple-700"><div className="text-xs text-purple-400">Uniformity</div><div className="text-2xl font-bold text-purple-300">{results.uniformity}%</div><div className="text-xs text-purple-500">across wafer</div></div>
                     <div className="bg-gradient-to-br from-orange-900/50 to-orange-800/30 rounded-lg p-3 border border-orange-700"><div className="text-xs text-orange-400">Profile Angle</div><div className="text-2xl font-bold text-orange-300">{results.profileAngle}°</div><div className="text-xs text-orange-500">sidewall</div></div>
                   </div>
@@ -699,77 +865,99 @@ const ICPEtcherSimulator = () => {
                         <text x="400" y="32" fill="#00ff00" fontSize="9" textAnchor="end" fontFamily="monospace">HV: 5.0kV</text>
                         <text x="400" y="44" fill="#00ff00" fontSize="9" textAnchor="end" fontFamily="monospace">WD: 5mm</text>
 
-                        {/* Draw profile based on pattern */}
-                        {waferPattern === 'blank' && (
+                        {/* Draw profile based on pattern - Si/SiO2 Stack (Gate Etch) */}
+                        {waferPattern === 'siOnOxide' && (
                           <g filter="url(#semNoise)">
-                            {/* Simple etched surface */}
-                            <rect x="50" y="100" width="400" height="40" fill="#888"/>
-                            <rect x="50" y="140" width="400" height="120" fill="#444"/>
-                            <text x="250" y="200" fill="#aaa" fontSize="12" textAnchor="middle">Blank Wafer - Uniform Etch</text>
-                            <text x="250" y="220" fill="#666" fontSize="10" textAnchor="middle">Depth: {results.etchDepth}nm</text>
-                          </g>
-                        )}
-
-                        {waferPattern === 'lineSpace' && (
-                          <g filter="url(#semNoise)">
-                            {/* Line/Space pattern */}
                             {[0,1,2,3,4].map(i => {
-                              const x = 80 + i * 85;
+                              const x = 70 + i * 90;
                               const angle = parseFloat(results.profileAngle);
-                              const depth = parseFloat(results.etchDepth) * 0.8;
+                              const depth = parseFloat(results.etchDepth) * 0.6;
                               const tanAngle = Math.tan((90 - angle) * Math.PI / 180);
-                              const bottomOffset = depth * tanAngle * 0.3;
+                              const bottomOffset = depth * tanAngle * 0.25;
                               return (
                                 <g key={i}>
-                                  {/* Mask layer */}
-                                  <rect x={x} y="80" width="40" height="25" fill="#aaa"/>
-                                  {/* Etched trench */}
-                                  <polygon points={`${x},105 ${x+bottomOffset},${105+depth*0.6} ${x+40-bottomOffset},${105+depth*0.6} ${x+40},105`} fill="#222"/>
-                                  {/* Sidewalls highlight */}
-                                  <line x1={x} y1="105" x2={x+bottomOffset} y2={105+depth*0.6} stroke="#555" strokeWidth="2"/>
-                                  <line x1={x+40} y1="105" x2={x+40-bottomOffset} y2={105+depth*0.6} stroke="#333" strokeWidth="2"/>
-                                  {/* Substrate */}
-                                  <rect x={x-10} y={105+depth*0.6} width="60" height="80" fill="#444"/>
+                                  {/* PR mask (magenta) */}
+                                  <rect x={x} y="60" width="45" height="20" fill="#a855f7"/>
+                                  {/* Si layer (purple-blue) - etched */}
+                                  <rect x={x} y="80" width="45" height="35" fill="#6366f1"/>
+                                  {/* Etched trench in Si */}
+                                  <polygon points={`${x+45},80 ${x+90-bottomOffset},${80+depth*0.5} ${x+90},${80+depth*0.5} ${x+90},80`} fill="#333"/>
+                                  <polygon points={`${x},80 ${x-45+bottomOffset},${80+depth*0.5} ${x-45},${80+depth*0.5} ${x-45},80`} fill="#222"/>
+                                  {/* SiO2 stop layer (cyan) */}
+                                  <rect x={x-45} y={80+depth*0.5} width="135" height="15" fill="#06b6d4"/>
+                                  {/* Si substrate */}
+                                  <rect x={x-45} y={95+depth*0.5} width="135" height="60" fill="#444"/>
+                                  {/* Sidewall highlight */}
+                                  <line x1={x} y1="80" x2={x-bottomOffset*0.5} y2={80+depth*0.5} stroke="#888" strokeWidth="1"/>
+                                  <line x1={x+45} y1="80" x2={x+45+bottomOffset*0.5} y2={80+depth*0.5} stroke="#555" strokeWidth="1"/>
                                 </g>
                               );
                             })}
-                            <text x="250" y="270" fill="#00ff00" fontSize="10" textAnchor="middle" fontFamily="monospace">L/S Pattern | CD: 100nm | Pitch: 200nm | Angle: {results.profileAngle}°</text>
+                            <text x="250" y="280" fill="#00ff00" fontSize="9" textAnchor="middle" fontFamily="monospace">Si/SiO₂ Gate | Selectivity: {results.selectivity}:1 | Angle: {results.profileAngle}°</text>
                           </g>
                         )}
 
-                        {waferPattern === 'contactHole' && (
+                        {/* SiO2/Si Stack (Contact Etch) */}
+                        {waferPattern === 'oxideOnSi' && (
                           <g filter="url(#semNoise)">
-                            {/* Contact holes */}
                             {[0,1,2,3].map(i => {
                               const x = 90 + i * 100;
                               const angle = parseFloat(results.profileAngle);
-                              const depth = parseFloat(results.etchDepth) * 0.7;
-                              const topWidth = 35;
-                              const bottomWidth = topWidth - (depth * Math.tan((90 - angle) * Math.PI / 180) * 0.4);
+                              const depth = parseFloat(results.etchDepth) * 0.5;
+                              const topWidth = 40;
+                              const bottomWidth = topWidth - (depth * Math.tan((90 - angle) * Math.PI / 180) * 0.3);
                               return (
                                 <g key={i}>
-                                  {/* Top surface */}
-                                  <rect x={x-25} y="70" width="85" height="30" fill="#888"/>
-                                  {/* Hole opening */}
-                                  <ellipse cx={x+17} cy="100" rx={topWidth/2} ry="8" fill="#222"/>
-                                  {/* Hole interior - tapered */}
-                                  <path d={`M${x},100 L${x+(topWidth-bottomWidth)/2},${100+depth*0.5} L${x+topWidth-(topWidth-bottomWidth)/2},${100+depth*0.5} L${x+topWidth},100`} fill="#111"/>
-                                  {/* Bottom */}
-                                  <ellipse cx={x+17} cy={100+depth*0.5} rx={bottomWidth/2} ry="5" fill="#333"/>
-                                  {/* Sidewall highlight */}
-                                  <path d={`M${x+2},100 Q${x+5},${100+depth*0.25} ${x+(topWidth-bottomWidth)/2+2},${100+depth*0.5}`} fill="none" stroke="#555" strokeWidth="1.5"/>
+                                  {/* PR mask */}
+                                  <rect x={x-30} y="55" width="95" height="25" fill="#a855f7"/>
+                                  {/* SiO2 layer (cyan) with contact hole */}
+                                  <rect x={x-30} y="80" width="95" height="50" fill="#06b6d4"/>
+                                  {/* Contact hole etched through oxide */}
+                                  <ellipse cx={x+17} cy="80" rx={topWidth/2} ry="6" fill="#333"/>
+                                  <path d={`M${x-3},80 L${x-3+(topWidth-bottomWidth)/2},${80+depth*0.6} L${x+37-(topWidth-bottomWidth)/2},${80+depth*0.6} L${x+37},80`} fill="#222"/>
+                                  {/* Si stop layer at bottom */}
+                                  <rect x={x-30} y="130" width="95" height="40" fill="#6366f1"/>
+                                  <ellipse cx={x+17} cy={80+depth*0.6} rx={bottomWidth/2} ry="4" fill="#6366f1"/>
                                 </g>
                               );
                             })}
-                            <text x="250" y="270" fill="#00ff00" fontSize="10" textAnchor="middle" fontFamily="monospace">Contact Hole | CD: 80nm | AR: 5:1 | Angle: {results.profileAngle}°</text>
+                            <text x="250" y="280" fill="#00ff00" fontSize="9" textAnchor="middle" fontFamily="monospace">SiO₂/Si Contact | Selectivity: {results.selectivity}:1 | Angle: {results.profileAngle}°</text>
+                          </g>
+                        )}
+
+                        {/* Si3N4/SiO2 Stack (Spacer Etch) */}
+                        {waferPattern === 'nitrideOnOxide' && (
+                          <g filter="url(#semNoise)">
+                            {[0,1,2,3,4,5].map(i => {
+                              const x = 55 + i * 70;
+                              const angle = parseFloat(results.profileAngle);
+                              const depth = parseFloat(results.etchDepth) * 0.5;
+                              return (
+                                <g key={i}>
+                                  {/* PR mask */}
+                                  <rect x={x} y="65" width="30" height="15" fill="#a855f7"/>
+                                  {/* Si3N4 spacer (green) */}
+                                  <rect x={x} y="80" width="30" height="40" fill="#22c55e"/>
+                                  {/* Etched spacer profile */}
+                                  <polygon points={`${x+30},80 ${x+50},${80+depth*0.4} ${x+50},120 ${x+30},120`} fill="#333"/>
+                                  <polygon points={`${x},80 ${x-20},${80+depth*0.4} ${x-20},120 ${x},120`} fill="#222"/>
+                                  {/* SiO2 stop layer (cyan) */}
+                                  <rect x={x-20} y="120" width="70" height="15" fill="#06b6d4"/>
+                                  {/* Si substrate */}
+                                  <rect x={x-20} y="135" width="70" height="50" fill="#444"/>
+                                </g>
+                              );
+                            })}
+                            <text x="250" y="280" fill="#00ff00" fontSize="9" textAnchor="middle" fontFamily="monospace">Si₃N₄/SiO₂ Spacer | Selectivity: {results.selectivity}:1 | Angle: {results.profileAngle}°</text>
                           </g>
                         )}
                       </svg>
                     </div>
-                    <div className="grid grid-cols-3 gap-3 mt-3 text-xs">
-                      <div className="bg-slate-700/50 rounded p-2"><span className="text-slate-400">CD Loss:</span><span className="text-cyan-400 ml-2">{waferPattern === 'blank' ? 'N/A' : `${(5 + Math.random() * 3).toFixed(1)}nm`}</span></div>
-                      <div className="bg-slate-700/50 rounded p-2"><span className="text-slate-400">Depth:</span><span className="text-cyan-400 ml-2">{results.etchDepth}nm</span></div>
-                      <div className="bg-slate-700/50 rounded p-2"><span className="text-slate-400">Taper:</span><span className="text-cyan-400 ml-2">{(90 - parseFloat(results.profileAngle)).toFixed(1)}°</span></div>
+                    <div className="grid grid-cols-4 gap-2 mt-3 text-xs">
+                      <div className="bg-slate-700/50 rounded p-2"><span className="text-slate-400">Target:</span><span className="text-cyan-400 ml-1">{results.targetMaterial}</span></div>
+                      <div className="bg-slate-700/50 rounded p-2"><span className="text-slate-400">Stop:</span><span className="text-green-400 ml-1">{results.stopMaterial}</span></div>
+                      <div className="bg-slate-700/50 rounded p-2"><span className="text-slate-400">Depth:</span><span className="text-cyan-400 ml-1">{results.etchDepth}nm</span></div>
+                      <div className="bg-slate-700/50 rounded p-2"><span className="text-slate-400">Selectivity:</span><span className="text-yellow-400 ml-1">{results.selectivity}:1</span></div>
                     </div>
                   </div>
                 )}
@@ -790,6 +978,106 @@ const ICPEtcherSimulator = () => {
           {logs.length === 0 && <div className="text-slate-600 text-center py-4">No logs yet - Start a process to see activity</div>}
         </div>
       </div>
+
+      {/* Guide Modal */}
+      {showGuide && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-xl max-w-4xl max-h-[90vh] overflow-auto border border-slate-600 shadow-2xl">
+            <div className="sticky top-0 bg-slate-800 px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-cyan-400">📖 ICP Etcher 실험 가이드</h2>
+              <button onClick={() => setShowGuide(false)} className="text-slate-400 hover:text-white text-2xl">&times;</button>
+            </div>
+            <div className="p-6 space-y-6">
+              {/* Equipment Overview */}
+              <div className="bg-slate-700/50 rounded-lg p-4">
+                <h3 className="text-lg font-bold text-white mb-2">🔬 장비 소개</h3>
+                <p className="text-sm text-slate-300">ICP (Inductively Coupled Plasma) Etcher는 고밀도 플라즈마를 이용한 건식 식각 장비입니다. Source RF로 플라즈마를 생성하고, Bias RF로 이온 에너지를 제어합니다.</p>
+                <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+                  <div className="bg-slate-800 rounded p-2"><span className="text-purple-400">Source RF:</span> 0-2000W (플라즈마 밀도)</div>
+                  <div className="bg-slate-800 rounded p-2"><span className="text-blue-400">Bias RF:</span> 0-500W (이온 에너지)</div>
+                  <div className="bg-slate-800 rounded p-2"><span className="text-green-400">Pressure:</span> 1-200 mTorr</div>
+                </div>
+              </div>
+
+              {/* Selectivity Experiments */}
+              <div className="bg-slate-700/50 rounded-lg p-4">
+                <h3 className="text-lg font-bold text-white mb-3">🎯 선택도(Selectivity) 실험</h3>
+                <p className="text-sm text-slate-400 mb-3">선택도란 목표 물질과 정지층의 식각 속도 비율입니다. 높은 선택도 = 정지층 손상 최소화</p>
+
+                <div className="space-y-4">
+                  {Object.entries(waferPatterns).map(([key, wp]) => (
+                    <div key={key} className="bg-slate-800 rounded-lg p-3 border border-slate-600">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-bold text-cyan-400">{wp.name}</div>
+                        <div className="text-xs bg-green-700 px-2 py-0.5 rounded">{wp.goalSelectivity}</div>
+                      </div>
+                      <div className="text-xs text-slate-400 mb-2">{wp.desc}</div>
+                      <div className="flex gap-2 mb-2">
+                        {wp.stack.map((layer, i) => (
+                          <div key={i} className="flex items-center gap-1 text-xs">
+                            <div className="w-3 h-3 rounded" style={{backgroundColor: layer.color}}/>
+                            <span className="text-slate-300">{layer.material} ({layer.thickness}nm)</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-xs">
+                        <span className="text-slate-500">Chemistry: </span>
+                        <span className="text-yellow-400">{wp.chemistry}</span>
+                      </div>
+                      <div className="mt-2 text-xs text-emerald-400">💡 {wp.tips}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Key Parameters */}
+              <div className="bg-slate-700/50 rounded-lg p-4">
+                <h3 className="text-lg font-bold text-white mb-3">⚙️ 선택도에 영향을 주는 파라미터</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="bg-slate-800 rounded p-3">
+                    <div className="text-yellow-400 font-bold mb-1">가스 조성</div>
+                    <ul className="text-xs text-slate-400 space-y-1">
+                      <li>• <span className="text-green-400">HBr↑</span> → Si:SiO₂ 선택도↑</li>
+                      <li>• <span className="text-cyan-400">CHF₃↑</span> → SiO₂:Si 선택도↑ (polymer)</li>
+                      <li>• <span className="text-orange-400">O₂↑</span> → polymer 제거, 선택도↓</li>
+                    </ul>
+                  </div>
+                  <div className="bg-slate-800 rounded p-3">
+                    <div className="text-blue-400 font-bold mb-1">RF Power & Pressure</div>
+                    <ul className="text-xs text-slate-400 space-y-1">
+                      <li>• <span className="text-blue-400">Bias↑</span> → 이온에너지↑ → 선택도↓</li>
+                      <li>• <span className="text-purple-400">Source↑</span> → 라디칼↑ → 화학반응↑</li>
+                      <li>• <span className="text-green-400">Pressure↑</span> → 평균자유행로↓ → 선택도↑</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* How to Use */}
+              <div className="bg-slate-700/50 rounded-lg p-4">
+                <h3 className="text-lg font-bold text-white mb-2">📋 사용 방법</h3>
+                <ol className="text-sm text-slate-300 space-y-2">
+                  <li><span className="text-cyan-400">1.</span> 웨이퍼 패턴 선택 (Si/SiO₂, SiO₂/Si, Si₃N₄/SiO₂)</li>
+                  <li><span className="text-cyan-400">2.</span> High/Low Selectivity 레시피 프리셋 로드 또는 직접 설정</li>
+                  <li><span className="text-cyan-400">3.</span> Power ON → Wafer Load → Interlock Check</li>
+                  <li><span className="text-cyan-400">4.</span> START → Monitor 탭에서 실시간 모니터링 (Pause 가능)</li>
+                  <li><span className="text-cyan-400">5.</span> Results 탭에서 선택도, Uniformity, Profile 확인</li>
+                </ol>
+              </div>
+
+              {/* Quick Tips */}
+              <div className="bg-gradient-to-r from-cyan-900/30 to-blue-900/30 rounded-lg p-4 border border-cyan-700">
+                <h3 className="text-lg font-bold text-cyan-400 mb-2">💡 Quick Tips</h3>
+                <ul className="text-sm text-slate-300 space-y-1">
+                  <li>• 선택도를 높이려면: <span className="text-green-400">HBr/CHF₃ 비율↑, Bias↓, Pressure↑</span></li>
+                  <li>• 식각 속도를 높이려면: <span className="text-yellow-400">Source Power↑, Cl₂/CF₄ 비율↑</span></li>
+                  <li>• Profile 수직도: <span className="text-blue-400">Bias↑로 이온 수직 입사 강화</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
