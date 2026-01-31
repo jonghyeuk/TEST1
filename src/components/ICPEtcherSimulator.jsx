@@ -708,7 +708,7 @@ const ICPEtcherSimulator = () => {
 
                     {/* 2D + 3D Side by Side - Expanded */}
                     <div className="grid grid-cols-2 gap-3">
-                      {/* 2D Contour Map - Real data-driven from 49 points */}
+                      {/* 2D Contour Map - Pixel-based with quantized levels */}
                       <div className="bg-slate-900 rounded-lg p-3">
                         <div className="text-xs text-slate-400 text-center mb-2">2D Contour Map</div>
                         <div className="flex">
@@ -717,79 +717,150 @@ const ICPEtcherSimulator = () => {
                               <clipPath id="waferClip2d">
                                 <circle cx="100" cy="100" r="88"/>
                               </clipPath>
-                              <filter id="contourBlur">
-                                <feGaussianBlur stdDeviation="6"/>
-                              </filter>
                             </defs>
-                            {/* Base layer */}
-                            <circle cx="100" cy="100" r="88" fill="#555"/>
-                            {/* 49-point data - each point as blurred circle for smooth interpolation */}
-                            <g clipPath="url(#waferClip2d)" filter="url(#contourBlur)">
-                              {uniformityMap.map((val, i) => {
-                                const row = Math.floor(i / 7);
-                                const col = i % 7;
-                                const x = 100 + (col - 3) * 26;
-                                const y = 100 + (row - 3) * 26;
-                                const normalized = (val - minUnif) / (maxUnif - minUnif + 0.01);
-                                const gray = Math.round(normalized * 180 + 50);
-                                return <circle key={i} cx={x} cy={y} r="35" fill={`rgb(${gray},${gray},${gray})`}/>;
-                              })}
-                            </g>
-                            {/* Contour lines based on actual threshold crossings */}
+                            {/* Pixel grid with quantized colors */}
                             <g clipPath="url(#waferClip2d)">
-                              {[0.1, 0.25, 0.4, 0.55, 0.7, 0.85].map((threshold, ti) => {
-                                const points = [];
-                                // Sample around the wafer to find contour crossings
-                                for (let a = 0; a < 360; a += 8) {
-                                  const rad = a * Math.PI / 180;
-                                  for (let r = 15; r <= 85; r += 4) {
-                                    const sx = 100 + r * Math.cos(rad);
-                                    const sy = 100 + r * Math.sin(rad);
-                                    // Bilinear interpolation from nearest grid points
-                                    const gx = (sx - 100) / 26 + 3;
-                                    const gy = (sy - 100) / 26 + 3;
-                                    const c0 = Math.floor(gx), r0 = Math.floor(gy);
-                                    const c1 = Math.min(6, c0 + 1), r1 = Math.min(6, r0 + 1);
-                                    if (c0 >= 0 && c0 < 7 && r0 >= 0 && r0 < 7) {
-                                      const fx = gx - c0, fy = gy - r0;
-                                      const v00 = uniformityMap[r0 * 7 + c0];
-                                      const v10 = uniformityMap[r0 * 7 + c1];
-                                      const v01 = uniformityMap[r1 * 7 + c0];
-                                      const v11 = uniformityMap[r1 * 7 + c1];
-                                      const interp = v00*(1-fx)*(1-fy) + v10*fx*(1-fy) + v01*(1-fx)*fy + v11*fx*fy;
-                                      const norm = (interp - minUnif) / (maxUnif - minUnif + 0.01);
-                                      if (Math.abs(norm - threshold) < 0.08) {
-                                        points.push({x: sx, y: sy, a});
-                                        break;
-                                      }
-                                    }
+                              {(() => {
+                                const cells = [];
+                                const cellSize = 6;
+                                const numLevels = 10;
+                                const range = maxUnif - minUnif + 0.01;
+
+                                // Bilinear interpolation function
+                                const getInterpolatedValue = (px, py) => {
+                                  const gx = (px - 100) / 26 + 3;
+                                  const gy = (py - 100) / 26 + 3;
+                                  const c0 = Math.max(0, Math.min(5, Math.floor(gx)));
+                                  const r0 = Math.max(0, Math.min(5, Math.floor(gy)));
+                                  const c1 = Math.min(6, c0 + 1);
+                                  const r1 = Math.min(6, r0 + 1);
+                                  const fx = Math.max(0, Math.min(1, gx - c0));
+                                  const fy = Math.max(0, Math.min(1, gy - r0));
+                                  const v00 = uniformityMap[r0 * 7 + c0] || minUnif;
+                                  const v10 = uniformityMap[r0 * 7 + c1] || minUnif;
+                                  const v01 = uniformityMap[r1 * 7 + c0] || minUnif;
+                                  const v11 = uniformityMap[r1 * 7 + c1] || minUnif;
+                                  return v00*(1-fx)*(1-fy) + v10*fx*(1-fy) + v01*(1-fx)*fy + v11*fx*fy;
+                                };
+
+                                // Generate cells
+                                for (let py = 12; py < 188; py += cellSize) {
+                                  for (let px = 12; px < 188; px += cellSize) {
+                                    const dx = px - 100, dy = py - 100;
+                                    if (dx*dx + dy*dy > 88*88) continue;
+
+                                    const val = getInterpolatedValue(px, py);
+                                    const normalized = (val - minUnif) / range;
+                                    const level = Math.floor(normalized * numLevels);
+                                    const quantized = level / numLevels;
+                                    const gray = Math.round(quantized * 180 + 50);
+
+                                    cells.push(
+                                      <rect
+                                        key={`${px}-${py}`}
+                                        x={px - cellSize/2}
+                                        y={py - cellSize/2}
+                                        width={cellSize}
+                                        height={cellSize}
+                                        fill={`rgb(${gray},${gray},${gray})`}
+                                      />
+                                    );
                                   }
                                 }
-                                if (points.length > 6) {
-                                  points.sort((a,b) => a.a - b.a);
-                                  const d = points.map((p,j) => (j===0?'M':'L')+p.x.toFixed(1)+','+p.y.toFixed(1)).join(' ')+'Z';
-                                  return <path key={ti} d={d} fill="none" stroke="rgba(40,40,40,0.7)" strokeWidth="1.5"/>;
+                                return cells;
+                              })()}
+                            </g>
+                            {/* Contour lines at level boundaries */}
+                            <g clipPath="url(#waferClip2d)">
+                              {(() => {
+                                const numLevels = 10;
+                                const range = maxUnif - minUnif + 0.01;
+                                const contours = [];
+
+                                const getInterpolatedValue = (px, py) => {
+                                  const gx = (px - 100) / 26 + 3;
+                                  const gy = (py - 100) / 26 + 3;
+                                  const c0 = Math.max(0, Math.min(5, Math.floor(gx)));
+                                  const r0 = Math.max(0, Math.min(5, Math.floor(gy)));
+                                  const c1 = Math.min(6, c0 + 1);
+                                  const r1 = Math.min(6, r0 + 1);
+                                  const fx = Math.max(0, Math.min(1, gx - c0));
+                                  const fy = Math.max(0, Math.min(1, gy - r0));
+                                  const v00 = uniformityMap[r0 * 7 + c0] || minUnif;
+                                  const v10 = uniformityMap[r0 * 7 + c1] || minUnif;
+                                  const v01 = uniformityMap[r1 * 7 + c0] || minUnif;
+                                  const v11 = uniformityMap[r1 * 7 + c1] || minUnif;
+                                  return v00*(1-fx)*(1-fy) + v10*fx*(1-fy) + v01*(1-fx)*fy + v11*fx*fy;
+                                };
+
+                                // For each level threshold
+                                for (let level = 1; level < numLevels; level++) {
+                                  const threshold = minUnif + (level / numLevels) * range;
+                                  const points = [];
+
+                                  // Sample around angles to find contour
+                                  for (let a = 0; a < 360; a += 5) {
+                                    const rad = a * Math.PI / 180;
+                                    // Binary search along radius to find threshold
+                                    let lo = 5, hi = 85;
+                                    while (hi - lo > 2) {
+                                      const mid = (lo + hi) / 2;
+                                      const px = 100 + mid * Math.cos(rad);
+                                      const py = 100 + mid * Math.sin(rad);
+                                      const val = getInterpolatedValue(px, py);
+                                      const centerVal = getInterpolatedValue(100, 100);
+                                      const edgeVal = getInterpolatedValue(100 + 80*Math.cos(rad), 100 + 80*Math.sin(rad));
+
+                                      if (centerVal > edgeVal) {
+                                        // Center high - value decreases outward
+                                        if (val > threshold) lo = mid;
+                                        else hi = mid;
+                                      } else {
+                                        // Edge high - value increases outward
+                                        if (val < threshold) lo = mid;
+                                        else hi = mid;
+                                      }
+                                    }
+                                    const r = (lo + hi) / 2;
+                                    if (r > 8 && r < 85) {
+                                      points.push({
+                                        x: 100 + r * Math.cos(rad),
+                                        y: 100 + r * Math.sin(rad),
+                                        a
+                                      });
+                                    }
+                                  }
+
+                                  if (points.length > 10) {
+                                    const d = points.map((p, j) =>
+                                      (j === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)
+                                    ).join(' ') + 'Z';
+                                    contours.push(
+                                      <path key={level} d={d} fill="none" stroke="rgba(30,30,30,0.6)" strokeWidth="1"/>
+                                    );
+                                  }
                                 }
-                                return null;
-                              })}
+                                return contours;
+                              })()}
                             </g>
                             {/* Wafer outline */}
-                            <circle cx="100" cy="100" r="88" fill="none" stroke="#333" strokeWidth="2.5"/>
+                            <circle cx="100" cy="100" r="88" fill="none" stroke="#222" strokeWidth="2"/>
                             {/* Notch */}
-                            <path d="M100,188 L95,198 L105,198 Z" fill="#222"/>
+                            <path d="M100,188 L95,198 L105,198 Z" fill="#1a1a1a"/>
                           </svg>
-                          {/* Vertical scale bar with nm/min values */}
+                          {/* Vertical scale bar with discrete levels */}
                           <div className="flex flex-col items-center ml-2 py-2">
                             <div className="text-[9px] text-white font-mono">{maxRate}</div>
-                            <div className="w-4 flex-1 rounded-sm relative" style={{background: 'linear-gradient(to bottom, #e8e8e8, #888, #323232)', minHeight: '200px'}}>
-                              {[0,0.2,0.4,0.6,0.8,1].map((t,i) => (
-                                <div key={i} className="absolute w-full flex items-center" style={{top: `${t*100}%`}}>
-                                  <div className="w-1 h-px bg-black/50"/>
-                                  <span className="text-[6px] text-slate-400 ml-0.5">
-                                    {(parseFloat(maxRate) - (parseFloat(maxRate)-parseFloat(minRate))*t).toFixed(0)}
-                                  </span>
-                                </div>
-                              ))}
+                            <div className="w-5 flex-1 rounded-sm overflow-hidden flex flex-col" style={{minHeight: '200px'}}>
+                              {[...Array(10)].map((_, i) => {
+                                const gray = Math.round((1 - i/10) * 180 + 50);
+                                const val = (parseFloat(maxRate) - (parseFloat(maxRate)-parseFloat(minRate))*(i/10)).toFixed(0);
+                                return (
+                                  <div key={i} className="flex-1 flex items-center" style={{backgroundColor: `rgb(${gray},${gray},${gray})`}}>
+                                    <span className="text-[7px] ml-1" style={{color: gray > 150 ? '#333' : '#ccc'}}>{val}</span>
+                                  </div>
+                                );
+                              })}
                             </div>
                             <div className="text-[8px] text-slate-500 font-mono">{minRate}</div>
                             <div className="text-[6px] text-slate-600 mt-0.5">nm/min</div>
