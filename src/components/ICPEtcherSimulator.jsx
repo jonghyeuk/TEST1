@@ -706,13 +706,13 @@ const ICPEtcherSimulator = () => {
                       <span className="text-slate-400">Rate: <span className="text-purple-400 font-mono">{etchRate}nm/min</span></span>
                     </div>
 
-                    {/* 2D + 3D Side by Side */}
+                    {/* 2D + 3D Side by Side - Expanded */}
                     <div className="grid grid-cols-2 gap-3">
                       {/* 2D Contour Map - Real data-driven from 49 points */}
-                      <div className="bg-slate-900 rounded-lg p-2">
-                        <div className="text-xs text-slate-400 text-center mb-1">2D Contour Map</div>
+                      <div className="bg-slate-900 rounded-lg p-3">
+                        <div className="text-xs text-slate-400 text-center mb-2">2D Contour Map</div>
                         <div className="flex">
-                          <svg viewBox="0 0 200 210" className="flex-1" style={{height: '210px'}}>
+                          <svg viewBox="0 0 200 210" className="flex-1" style={{height: '320px'}}>
                             <defs>
                               <clipPath id="waferClip2d">
                                 <circle cx="100" cy="100" r="88"/>
@@ -779,9 +779,9 @@ const ICPEtcherSimulator = () => {
                             <path d="M100,188 L95,198 L105,198 Z" fill="#222"/>
                           </svg>
                           {/* Vertical scale bar with nm/min values */}
-                          <div className="flex flex-col items-center ml-1 py-1">
-                            <div className="text-[8px] text-white font-mono">{maxRate}</div>
-                            <div className="w-3 flex-1 rounded-sm relative" style={{background: 'linear-gradient(to bottom, #e8e8e8, #888, #323232)', minHeight: '120px'}}>
+                          <div className="flex flex-col items-center ml-2 py-2">
+                            <div className="text-[9px] text-white font-mono">{maxRate}</div>
+                            <div className="w-4 flex-1 rounded-sm relative" style={{background: 'linear-gradient(to bottom, #e8e8e8, #888, #323232)', minHeight: '200px'}}>
                               {[0,0.2,0.4,0.6,0.8,1].map((t,i) => (
                                 <div key={i} className="absolute w-full flex items-center" style={{top: `${t*100}%`}}>
                                   <div className="w-1 h-px bg-black/50"/>
@@ -798,38 +798,38 @@ const ICPEtcherSimulator = () => {
                       </div>
 
                       {/* 3D Isometric View */}
-                      <div className="bg-slate-900 rounded-lg p-2">
-                        <div className="text-xs text-slate-400 text-center mb-1">3D Depth View</div>
-                        <svg viewBox="0 0 240 200" className="w-full" style={{height: '200px'}}>
-                          <g transform="translate(120, 140)">
+                      <div className="bg-slate-900 rounded-lg p-3">
+                        <div className="text-xs text-slate-400 text-center mb-2">3D Depth View</div>
+                        <svg viewBox="0 0 280 240" className="w-full" style={{height: '320px'}}>
+                          <g transform="translate(140, 170)">
                             {uniformityMap.map((val, i) => {
                               const row = Math.floor(i / 7);
                               const col = i % 7;
                               const baseVal = results ? parseFloat(results.uniformity) : 95;
                               const diff = (val - baseVal) * uniformityScale;
-                              const height = Math.max(2, 20 + diff * 2);
-                              const isoX = (col - row) * 14;
-                              const isoY = (col + row) * 7 - 42;
+                              const height = Math.max(3, 28 + diff * 2.5);
+                              const isoX = (col - row) * 18;
+                              const isoY = (col + row) * 9 - 54;
                               const gray = Math.round(((val - minUnif) / (maxUnif - minUnif)) * 200 + 55);
                               const color = `rgb(${gray},${gray},${gray})`;
                               const darkColor = `rgb(${Math.max(0,gray-40)},${Math.max(0,gray-40)},${Math.max(0,gray-40)})`;
                               const lightColor = `rgb(${Math.min(255,gray+30)},${Math.min(255,gray+30)},${Math.min(255,gray+30)})`;
                               return (
                                 <g key={i} transform={`translate(${isoX}, ${isoY})`}>
-                                  <polygon points={`0,${-height} 10,${-height-5} 20,${-height} 10,${-height+5}`} fill={lightColor} stroke={color} strokeWidth="0.3"/>
-                                  <polygon points={`0,${-height} 10,${-height+5} 10,5 0,0`} fill={color} stroke={darkColor} strokeWidth="0.3"/>
-                                  <polygon points={`10,${-height+5} 20,${-height} 20,0 10,5`} fill={darkColor} stroke={darkColor} strokeWidth="0.3"/>
+                                  <polygon points={`0,${-height} 13,${-height-6.5} 26,${-height} 13,${-height+6.5}`} fill={lightColor} stroke={color} strokeWidth="0.4"/>
+                                  <polygon points={`0,${-height} 13,${-height+6.5} 13,6.5 0,0`} fill={color} stroke={darkColor} strokeWidth="0.4"/>
+                                  <polygon points={`13,${-height+6.5} 26,${-height} 26,0 13,6.5`} fill={darkColor} stroke={darkColor} strokeWidth="0.4"/>
                                 </g>
                               );
                             })}
                           </g>
                           {/* Scale indicator */}
-                          <text x="120" y="190" fill="#64748b" fontSize="8" textAnchor="middle">↑ Height = Etch Depth</text>
+                          <text x="140" y="230" fill="#64748b" fontSize="9" textAnchor="middle">↑ Height = Etch Depth</text>
                         </svg>
                         {/* Depth scale bar */}
-                        <div className="flex items-center justify-center gap-2 mt-1">
-                          <div className="w-24 h-3 rounded" style={{background: 'linear-gradient(to right, #333, #fff)'}}/>
-                          <div className="text-xs text-slate-400">
+                        <div className="flex items-center justify-center gap-3 mt-2">
+                          <div className="w-32 h-4 rounded" style={{background: 'linear-gradient(to right, #333, #fff)'}}/>
+                          <div className="text-sm text-slate-400">
                             <span className="text-slate-500">{minDepth}</span>
                             <span className="mx-1">-</span>
                             <span className="text-white">{maxDepth}</span>
@@ -838,7 +838,7 @@ const ICPEtcherSimulator = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="text-xs text-slate-500 text-center mt-2">💡 밝을수록 식각량이 많음 (Center-high 또는 Edge-high 패턴)</div>
+                    <div className="text-xs text-slate-500 text-center mt-1">💡 밝을수록 식각량이 많음 | Scale 조절로 미세 차이 확대</div>
                   </div>
                 );})()}
 
