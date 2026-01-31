@@ -708,79 +708,91 @@ const ICPEtcherSimulator = () => {
 
                     {/* 2D + 3D Side by Side */}
                     <div className="grid grid-cols-2 gap-3">
-                      {/* 2D Contour Map with actual contour bands */}
+                      {/* 2D Contour Map - Real data-driven from 49 points */}
                       <div className="bg-slate-900 rounded-lg p-2">
                         <div className="text-xs text-slate-400 text-center mb-1">2D Contour Map</div>
-                        <svg viewBox="0 0 220 220" className="w-full" style={{height: '220px'}}>
-                          <defs>
-                            <clipPath id="waferClip">
-                              <circle cx="100" cy="100" r="85"/>
-                            </clipPath>
-                          </defs>
-                          {/* Create contour bands based on data */}
-                          {(() => {
-                            const centerVal = uniformityMap[24];
-                            const edgeVals = [uniformityMap[0], uniformityMap[6], uniformityMap[42], uniformityMap[48]];
-                            const avgEdge = edgeVals.reduce((a,b) => a+b, 0) / 4;
-                            const centerHigh = centerVal > avgEdge;
-                            const minV = Math.min(...uniformityMap);
-                            const maxV = Math.max(...uniformityMap);
-                            const range = maxV - minV;
-                            const numBands = 8;
-                            const bandSize = range / numBands;
-
-                            // Create contour bands from outside to inside
-                            const bands = [];
-                            for (let i = 0; i < numBands; i++) {
-                              const bandVal = centerHigh
-                                ? minV + (i + 0.5) * bandSize  // outer = low, inner = high
-                                : maxV - (i + 0.5) * bandSize; // outer = high, inner = low
-                              const normalizedVal = (bandVal - minV) / range;
-                              const gray = Math.round(normalizedVal * 200 + 40);
-                              const radius = 85 - (i * 85 / numBands);
-                              // Add slight irregularity to contours
-                              const wobble = Array(12).fill(0).map((_, j) => {
-                                const angle = (j / 12) * Math.PI * 2;
-                                const noise = (Math.sin(angle * 3 + i) * 0.1 + Math.cos(angle * 5 - i) * 0.05) * radius;
-                                return {
-                                  x: 100 + (radius + noise) * Math.cos(angle),
-                                  y: 100 + (radius + noise) * Math.sin(angle)
-                                };
-                              });
-                              const pathD = wobble.map((p, j) =>
-                                (j === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)
-                              ).join(' ') + ' Z';
-
-                              const rateVal = (etchRate * bandVal / 100).toFixed(0);
-                              bands.push({ pathD, gray, rateVal, radius, i });
-                            }
-
-                            return bands.map((band, idx) => (
-                              <g key={idx}>
-                                <path
-                                  d={band.pathD}
-                                  fill={`rgb(${band.gray},${band.gray},${band.gray})`}
-                                  stroke={`rgb(${Math.max(0, band.gray-30)},${Math.max(0, band.gray-30)},${Math.max(0, band.gray-30)})`}
-                                  strokeWidth="1"
-                                  clipPath="url(#waferClip)"
-                                />
-                              </g>
-                            ));
-                          })()}
-                          {/* Wafer outline */}
-                          <circle cx="100" cy="100" r="85" fill="none" stroke="#555" strokeWidth="2"/>
-                          {/* Notch */}
-                          <path d="M100,185 L96,192 L104,192 Z" fill="#333" stroke="#555" strokeWidth="1"/>
-                          {/* Center marker */}
-                          <circle cx="100" cy="100" r="2" fill="#0ff"/>
-                        </svg>
-                        {/* Vertical scale bar with values */}
-                        <div className="flex justify-center gap-3 mt-1">
-                          <div className="flex flex-col items-center">
-                            <div className="text-[9px] text-white font-mono">{maxRate}</div>
-                            <div className="w-4 h-20 rounded-sm" style={{background: 'linear-gradient(to bottom, #f0f0f0, #888, #282828)'}}/>
-                            <div className="text-[9px] text-slate-500 font-mono">{minRate}</div>
-                            <div className="text-[8px] text-slate-500">nm/min</div>
+                        <div className="flex">
+                          <svg viewBox="0 0 200 210" className="flex-1" style={{height: '210px'}}>
+                            <defs>
+                              <clipPath id="waferClip2d">
+                                <circle cx="100" cy="100" r="88"/>
+                              </clipPath>
+                              <filter id="contourBlur">
+                                <feGaussianBlur stdDeviation="6"/>
+                              </filter>
+                            </defs>
+                            {/* Base layer */}
+                            <circle cx="100" cy="100" r="88" fill="#555"/>
+                            {/* 49-point data - each point as blurred circle for smooth interpolation */}
+                            <g clipPath="url(#waferClip2d)" filter="url(#contourBlur)">
+                              {uniformityMap.map((val, i) => {
+                                const row = Math.floor(i / 7);
+                                const col = i % 7;
+                                const x = 100 + (col - 3) * 26;
+                                const y = 100 + (row - 3) * 26;
+                                const normalized = (val - minUnif) / (maxUnif - minUnif + 0.01);
+                                const gray = Math.round(normalized * 180 + 50);
+                                return <circle key={i} cx={x} cy={y} r="35" fill={`rgb(${gray},${gray},${gray})`}/>;
+                              })}
+                            </g>
+                            {/* Contour lines based on actual threshold crossings */}
+                            <g clipPath="url(#waferClip2d)">
+                              {[0.1, 0.25, 0.4, 0.55, 0.7, 0.85].map((threshold, ti) => {
+                                const points = [];
+                                // Sample around the wafer to find contour crossings
+                                for (let a = 0; a < 360; a += 8) {
+                                  const rad = a * Math.PI / 180;
+                                  for (let r = 15; r <= 85; r += 4) {
+                                    const sx = 100 + r * Math.cos(rad);
+                                    const sy = 100 + r * Math.sin(rad);
+                                    // Bilinear interpolation from nearest grid points
+                                    const gx = (sx - 100) / 26 + 3;
+                                    const gy = (sy - 100) / 26 + 3;
+                                    const c0 = Math.floor(gx), r0 = Math.floor(gy);
+                                    const c1 = Math.min(6, c0 + 1), r1 = Math.min(6, r0 + 1);
+                                    if (c0 >= 0 && c0 < 7 && r0 >= 0 && r0 < 7) {
+                                      const fx = gx - c0, fy = gy - r0;
+                                      const v00 = uniformityMap[r0 * 7 + c0];
+                                      const v10 = uniformityMap[r0 * 7 + c1];
+                                      const v01 = uniformityMap[r1 * 7 + c0];
+                                      const v11 = uniformityMap[r1 * 7 + c1];
+                                      const interp = v00*(1-fx)*(1-fy) + v10*fx*(1-fy) + v01*(1-fx)*fy + v11*fx*fy;
+                                      const norm = (interp - minUnif) / (maxUnif - minUnif + 0.01);
+                                      if (Math.abs(norm - threshold) < 0.08) {
+                                        points.push({x: sx, y: sy, a});
+                                        break;
+                                      }
+                                    }
+                                  }
+                                }
+                                if (points.length > 6) {
+                                  points.sort((a,b) => a.a - b.a);
+                                  const d = points.map((p,j) => (j===0?'M':'L')+p.x.toFixed(1)+','+p.y.toFixed(1)).join(' ')+'Z';
+                                  return <path key={ti} d={d} fill="none" stroke="rgba(40,40,40,0.7)" strokeWidth="1.5"/>;
+                                }
+                                return null;
+                              })}
+                            </g>
+                            {/* Wafer outline */}
+                            <circle cx="100" cy="100" r="88" fill="none" stroke="#333" strokeWidth="2.5"/>
+                            {/* Notch */}
+                            <path d="M100,188 L95,198 L105,198 Z" fill="#222"/>
+                          </svg>
+                          {/* Vertical scale bar with nm/min values */}
+                          <div className="flex flex-col items-center ml-1 py-1">
+                            <div className="text-[8px] text-white font-mono">{maxRate}</div>
+                            <div className="w-3 flex-1 rounded-sm relative" style={{background: 'linear-gradient(to bottom, #e8e8e8, #888, #323232)', minHeight: '120px'}}>
+                              {[0,0.2,0.4,0.6,0.8,1].map((t,i) => (
+                                <div key={i} className="absolute w-full flex items-center" style={{top: `${t*100}%`}}>
+                                  <div className="w-1 h-px bg-black/50"/>
+                                  <span className="text-[6px] text-slate-400 ml-0.5">
+                                    {(parseFloat(maxRate) - (parseFloat(maxRate)-parseFloat(minRate))*t).toFixed(0)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="text-[8px] text-slate-500 font-mono">{minRate}</div>
+                            <div className="text-[6px] text-slate-600 mt-0.5">nm/min</div>
                           </div>
                         </div>
                       </div>
